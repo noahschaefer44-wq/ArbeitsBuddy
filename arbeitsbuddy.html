@@ -964,7 +964,8 @@ function loadState() {
   }
   return st;
 }
-function saveState() {
+function saveState(localOnly = false) {
+  if (!localOnly && typeof markDirty === "function") markDirty();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) {
     if (!storageWarned) { storageWarned = true; toast("Speichern im Browser ist nicht möglich. Exportiere deine Daten unter Einstellungen.", { ms: 8000 }); }
@@ -1330,7 +1331,7 @@ function renderRail(route) {
         <a href="#/school" class="mob" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 19)}<span>Schule</span></a>
         <button type="button" class="more-btn" data-act="more">${icon("more", 19)}<span>Mehr</span></button>
       </nav>
-      <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}</div>
+      <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}${sync.session ? `<br><span id="syncState">${esc(syncLabel())}</span>` : ""}</div>
     </aside>`;
 }
 function renderTopbar() {
@@ -2156,6 +2157,7 @@ function renderSettings() {
           ${sw("repeatToggle", "Wiederkehrende Checklisten zurücksetzen", "Erledigte Checklisten mit Wiederholung starten neu.", st.autoRepeat)}
         </div>
       </section>
+      ${renderSyncSetting()}
       <section class="setting">
         <h3>Als App installieren</h3>
         <p>${installed() ? "ArbeitsBuddy läuft als installierte App." : "iPhone/iPad: Seite in Safari öffnen → Teilen-Symbol → „Zum Home-Bildschirm“. Android/Chrome: Menü → „App installieren“. Danach startet ArbeitsBuddy im Vollbild und funktioniert auch ohne Internet."}</p>
@@ -2322,9 +2324,9 @@ function closeDialog() {
   if (dialogReturn && document.contains(dialogReturn)) dialogReturn.focus({ preventScroll: true });
   dialogReturn = null;
 }
-function confirmDialog({ title, text, confirm = "Bestätigen", danger = false }) {
+function confirmDialog({ title, text, confirm = "Bestätigen", cancel = "Abbrechen", danger = false }) {
   return new Promise(resolve => {
-    openDialog({ title, narrow: true, body: `<p>${esc(text)}</p>`, foot: `<button type="button" class="btn" data-act="dlg-cancel" ${danger ? "data-autofocus" : ""}>Abbrechen</button><button type="button" class="btn ${danger ? "danger solid" : "primary"}" data-act="dlg-ok" ${danger ? "" : "data-autofocus"}>${esc(confirm)}</button>` });
+    openDialog({ title, narrow: true, body: `<p>${esc(text)}</p>`, foot: `<button type="button" class="btn" data-act="dlg-cancel" ${danger ? "data-autofocus" : ""}>${esc(cancel)}</button><button type="button" class="btn ${danger ? "danger solid" : "primary"}" data-act="dlg-ok" ${danger ? "" : "data-autofocus"}>${esc(confirm)}</button>` });
     pendingConfirm = resolve;
   });
 }
@@ -2579,6 +2581,10 @@ async function handleAction(act, el) {
     case "edit-list": if (list) openListModal(list.id); break;
     case "open-list": go(`/list/${listId}`); break;
     case "goto": closeDialog(); go(val); break;
+    case "sync-signup": signIn(true); break;
+    case "sync-logout": signOut(); break;
+    case "sync-now": sync.dirty ? await pushState() : await pullState(); render(); toast(syncLabel()); break;
+    case "sync-backup": { const b = JSON.parse(localStorage.getItem(BACKUP_KEY) || "null"); if (b) download(`arbeitsbuddy-sicherung-vor-abgleich-${dkey(b.at)}.json`, JSON.stringify({ app: "ArbeitsBuddy", version: 3, ...b.state }, null, 2), "application/json"); break; }
     case "t-in": case "t-pause": case "t-resume": case "t-out": case "t-reopen": {
       const d = day(todayKey()), now = nowTime(), open = d.breaks.find(b => !b.to);
       if (act === "t-in") Object.assign(d, { from: now, to: "", breaks: [], pause: 0, status: "" });
@@ -2887,6 +2893,8 @@ document.addEventListener("submit", e => {
     });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
+  } else if (f.id === "syncForm") {
+    signIn(false);
   } else if (f.id === "timeForm") {
     const k = f.dataset.date, d = day(k);
     const breaks = $("#tmBreaks").value.split(/[,;\n]+/).map(x => x.trim().match(/^(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})$/)).filter(Boolean).map(m => ({ from: `${m[1].padStart(2, "0")}:${m[2]}`, to: `${m[3].padStart(2, "0")}:${m[4]}` })).filter(b => isTime(b.from) && isTime(b.to) && b.to > b.from);
@@ -3144,6 +3152,158 @@ document.addEventListener("click", e => {
   if (el && ui.focus && /^f-/.test(el.dataset.act)) { e.stopPropagation(); focusAction(el.dataset.act, el); }
 }, true);
 
+/* ==========================================================
+   Synchronisierung PC ↔ Handy (Supabase, ein Datensatz je Benutzer)
+   ========================================================== */
+const SB = { url: "https://vigfdkcqqakuxlxravdl.supabase.co", key: "sb_publishable_f8xzw4tz1VzhvfqfCZuHkA_Fs9q_FCG" };
+const SYNC_KEY = "arbeitsbuddy_sync", BACKUP_KEY = "arbeitsbuddy_backup";
+const DEVICE = /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) ? "Handy" : "PC";
+let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
+let syncBusy = false, pushTimer = null, syncStatus = "";
+const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* ohne Speicher */ } };
+function syncLabel() {
+  if (!sync.session) return "";
+  if (syncStatus) return syncStatus;
+  return sync.dirty ? "Sync: ausstehend" : sync.last ? `Sync: ✓ ${relTime(sync.last)}` : "Sync: bereit";
+}
+function showSync(text) { syncStatus = text || ""; const el = $("#syncState"); if (el) el.textContent = syncLabel(); }
+function markDirty() {
+  if (!sync.session) return;
+  sync.dirty = true; saveSync();
+  clearTimeout(pushTimer); pushTimer = setTimeout(pushState, 1500);
+}
+async function sbFetch(path, opt = {}, auth = true) {
+  const headers = { apikey: SB.key, "Content-Type": "application/json", ...(opt.headers || {}) };
+  if (auth) { await ensureToken(); headers.Authorization = "Bearer " + sync.session.access_token; }
+  const r = await fetch(SB.url + path, { ...opt, headers });
+  const text = await r.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+  if (!r.ok) { const err = new Error((body && (body.msg || body.message || body.error_description || body.error)) || `Fehler ${r.status}`); err.status = r.status; throw err; }
+  return body;
+}
+function setSession(b) {
+  sync.session = { access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at || Math.floor(Date.now() / 1000) + (b.expires_in || 3600), user: { id: b.user.id, email: b.user.email } };
+  saveSync();
+}
+async function ensureToken() {
+  const s = sync.session;
+  if (!s) throw new Error("Nicht angemeldet.");
+  if (Date.now() / 1000 < s.expires_at - 60) return;
+  try { setSession(await sbFetch("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: JSON.stringify({ refresh_token: s.refresh_token }) }, false)); }
+  catch (e) { if (e.status === 400 || e.status === 401) { sync.session = null; saveSync(); render(); toast("Anmeldung abgelaufen. Bitte unter Einstellungen neu anmelden.", { ms: 7000 }); } throw e; }
+}
+const rowPath = () => `/rest/v1/app_state?user_id=eq.${sync.session.user.id}`;
+function applyRemote(row) {
+  state = sanitizeState(row.data);
+  state.flags.schoolSeeded = true;
+  sync.version = row.version; sync.dirty = false; sync.last = Date.now(); saveSync();
+  saveState(true); ui.rep = null; render();
+}
+/* Konflikt: Server-Stand als Basis, Einträge, die nur hier existieren, kommen dazu */
+function mergeStates(remote, local) {
+  const byId = (r, l) => { r = arr(r); const ids = new Set(r.map(x => x && x.id)); return [...r, ...arr(l).filter(x => x && !ids.has(x.id))]; };
+  const m = { ...remote };
+  ["checklists", "history", "properties", "events", "orders", "logs", "homework"].forEach(k => { m[k] = byId(remote[k], local[k]); });
+  ["days", "reports"].forEach(k => { m[k] = { ...obj(local[k]), ...obj(remote[k]) }; });
+  return m;
+}
+function keepBackup() { try { localStorage.setItem(BACKUP_KEY, JSON.stringify({ at: Date.now(), state })); } catch (e) { /* voll */ } }
+async function pushState() {
+  if (!sync.session || !sync.dirty || syncBusy) return;
+  if (!navigator.onLine) { showSync("Sync: offline, wird nachgeholt"); return; }
+  syncBusy = true;
+  try {
+    const v = sync.version || 0;
+    const body = JSON.stringify({ data: state, version: v + 1, device: DEVICE, updated_at: new Date().toISOString() });
+    let rows;
+    if (!v) rows = await sbFetch("/rest/v1/app_state", { method: "POST", headers: { Prefer: "return=representation" }, body });
+    else rows = await sbFetch(`${rowPath()}&version=eq.${v}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body });
+    if (rows && rows.length) { sync.version = v + 1; sync.dirty = false; sync.last = Date.now(); saveSync(); showSync(""); }
+    else { syncBusy = false; await pullState(true); return; }
+  } catch (e) { showSync(e.status ? `Sync-Fehler: ${e.message}` : "Sync: offline, wird nachgeholt"); }
+  syncBusy = false;
+}
+/* conflict = eigene Änderung wurde abgelehnt, weil das andere Gerät schneller war */
+async function pullState(conflict = false) {
+  if (!sync.session || syncBusy || !navigator.onLine) return;
+  syncBusy = true;
+  try {
+    const head = await sbFetch(`${rowPath()}&select=version`);
+    const remoteV = head && head[0] ? head[0].version : 0;
+    if (!remoteV) { syncBusy = false; if (!sync.version) { sync.dirty = true; saveSync(); } return pushState(); }
+    if (remoteV > (sync.version || 0)) {
+      const both = sync.dirty || conflict;
+      if (!both && (dialogOpen() || ui.focus || /^(input|textarea|select)$/i.test((document.activeElement || {}).tagName || ""))) { syncBusy = false; return; }
+      const [row] = await sbFetch(`${rowPath()}&select=data,version,device,updated_at`);
+      if (both) {
+        keepBackup();
+        applyRemote({ ...row, data: mergeStates(row.data, JSON.parse(JSON.stringify(state))) });
+        sync.dirty = true; saveSync();
+        toast(`Änderungen von diesem Gerät und vom ${row.device || "anderen Gerät"} wurden zusammengeführt.`, { ms: 6000 });
+      } else applyRemote(row);
+    }
+    showSync("");
+  } catch (e) { showSync(e.status ? `Sync-Fehler: ${e.message}` : "Sync: offline"); }
+  syncBusy = false;
+  if (sync.dirty) pushState();
+}
+/* Beim ersten Anmelden: Server-Stand übernehmen oder diesen Stand hochladen */
+async function firstSync() {
+  sync.version = 0; sync.dirty = false; saveSync();
+  const [row] = await sbFetch(`${rowPath()}&select=data,version,device,updated_at`);
+  if (!row) { sync.dirty = true; saveSync(); await pushState(); toast("Angemeldet. Deine Daten sind jetzt online gesichert."); return; }
+  const take = await confirmDialog({ title: "Daten auf dem Server gefunden", text: `Es gibt schon einen Stand vom ${fmtD(dkey(new Date(row.updated_at)))} (${row.device || "anderes Gerät"}). Diesen Stand auf dieses Gerät übernehmen? Dein bisheriger Stand hier wird vorher als Sicherung aufbewahrt. Alternativ lädst du den Stand dieses Geräts hoch und ersetzt den Server-Stand.`, confirm: "Server-Stand übernehmen", cancel: "Diesen Stand hochladen" });
+  if (take) { keepBackup(); applyRemote(row); toast("Server-Stand übernommen."); }
+  else { sync.version = row.version; sync.dirty = true; saveSync(); await pushState(); toast("Stand dieses Geräts hochgeladen."); }
+}
+async function signIn(create) {
+  const email = $("#syEmail").value.trim(), password = $("#syPass").value;
+  if (!email || password.length < 6) { toast("Bitte E-Mail und ein Passwort mit mindestens 6 Zeichen eingeben."); return; }
+  try {
+    if (create) {
+      const b = await sbFetch("/auth/v1/signup", { method: "POST", body: JSON.stringify({ email, password }) }, false);
+      if (!b || !b.access_token) { toast("Konto angelegt. Bitte den Link in der Bestätigungs-Mail anklicken und dich dann hier anmelden.", { ms: 9000 }); return; }
+      setSession(b);
+    } else setSession(await sbFetch("/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email, password }) }, false));
+    render();
+    await firstSync();
+    render();
+  } catch (e) {
+    toast(/invalid login/i.test(e.message) ? "E-Mail oder Passwort falsch." : /not confirmed/i.test(e.message) ? "Bitte zuerst den Link in der Bestätigungs-Mail anklicken." : `Anmeldung fehlgeschlagen: ${e.message}`, { ms: 7000 });
+  }
+}
+async function signOut() {
+  try { await sbFetch("/auth/v1/logout", { method: "POST" }); } catch (e) { /* offline */ }
+  sync = {}; saveSync(); render(); toast("Abgemeldet. Deine Daten bleiben auf diesem Gerät.");
+}
+function renderSyncSetting() {
+  const backup = (() => { try { return JSON.parse(localStorage.getItem(BACKUP_KEY)); } catch (e) { return null; } })();
+  return `
+      <section class="setting">
+        <h3>Synchronisierung PC ↔ Handy</h3>
+        ${sync.session ? `
+          <p>Angemeldet als <strong>${esc(sync.session.user.email)}</strong> auf diesem ${DEVICE}. Änderungen werden automatisch abgeglichen: beim Öffnen, beim Zurückwechseln in die App und alle 30 Sekunden. Offline wird später nachgeholt.</p>
+          <p class="hint-text" style="margin-bottom:12px">${esc(syncLabel())}</p>
+          <div class="btn-row"><button type="button" class="btn primary" data-act="sync-now">Jetzt synchronisieren</button><button type="button" class="btn" data-act="sync-logout">Abmelden</button>${backup ? `<button type="button" class="btn" data-act="sync-backup">Sicherung vom ${fmtD(dkey(backup.at))} herunterladen</button>` : ""}</div>`
+        : `
+          <p>Melde dich auf PC und Handy mit demselben Konto an, dann sind deine Daten auf beiden Geräten gleich. Gespeichert wird bei Supabase (Server in Frankfurt), nur dein Login hat Zugriff.</p>
+          <form class="form" id="syncForm" autocomplete="on">
+            <div class="field"><label for="syEmail">E-Mail</label><input class="input" id="syEmail" type="email" autocomplete="username"></div>
+            <div class="field"><label for="syPass">Passwort</label><input class="input" id="syPass" type="password" autocomplete="current-password" minlength="6"></div>
+            <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Anmelden</button><button type="button" class="btn" data-act="sync-signup">Konto erstellen</button></div>
+          </form>`}
+      </section>`;
+}
+function setupSync() {
+  const pull = () => { if (sync.session && document.visibilityState === "visible") pullState(); };
+  document.addEventListener("visibilitychange", pull);
+  window.addEventListener("online", () => { if (sync.session) { pushState(); pullState(); } });
+  window.addEventListener("focus", pull);
+  setInterval(pull, 30000);
+  pull();
+}
+
 /* Web-App: Offline-Speicher und dauerhafter Speicher (nicht über file://) */
 function setupWebApp() {
   if (!/^https?:$/.test(location.protocol)) return;
@@ -3154,13 +3314,14 @@ const installed = () => matchMedia("(display-mode: standalone)").matches || navi
 function init() {
   setupWebApp();
   const rolled = rollRepeats();
-  saveState();
+  saveState(!rolled);
   window.addEventListener("hashchange", () => { if (!ui.focus) { closeDialog(); render({ top: true }); } });
   const mq = matchMedia("(prefers-color-scheme: dark)");
   const onScheme = () => { if (state.settings.theme === "system") render(); };
   if (mq.addEventListener) mq.addEventListener("change", onScheme); else if (mq.addListener) mq.addListener(onScheme);
   window.addEventListener("storage", e => { if (e.key === STORAGE_KEY && !ui.focus && !dialogOpen() && !ui.palette) { state = loadState(); render(); } });
   render({ top: true, initial: true });
+  setupSync();
   setInterval(() => { const el = $("#liveWork"); if (el && stampState() !== "none") el.textContent = `${fmtHM(liveMins(state.days[todayKey()]))} Std.`; }, 20000);
   if (rolled) toast(`${plural(rolled, "wiederkehrende Checkliste wurde", "wiederkehrende Checklisten wurden")} für heute zurückgesetzt.`, { ms: 5000 });
 }
