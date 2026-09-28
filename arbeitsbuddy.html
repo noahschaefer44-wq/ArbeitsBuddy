@@ -373,6 +373,8 @@ kbd { font: 600 11.5px/1 var(--font); padding: 3px 6px; border: 1px solid var(--
 .ev { display: block; width: 100%; font-size: 12px; font-weight: 550; line-height: 1.3; padding: 3px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; transition: transform .15s var(--ease), filter .15s; }
 .ev:hover { transform: translateX(2px); filter: brightness(.97); }
 .ev.schule { background: var(--surface-2); color: var(--ink-2); box-shadow: inset 3px 0 0 var(--accent-2); }
+.ev.klausur { background: var(--red-soft); color: var(--ink); box-shadow: inset 3px 0 0 var(--red); font-weight: 600; }
+.chip.warn { background: var(--red-soft); border-color: transparent; color: var(--red); }
 .ev.feiertag { background: var(--red-soft); color: var(--red); }
 .ev.ferien { background: var(--warn-soft); color: var(--muted); }
 .ev.task { background: transparent; color: var(--ink-2); border: 1px dashed var(--line-strong); }
@@ -569,6 +571,14 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .auth-form .btn { width: 100%; justify-content: center; }
 .auth .hint-text { margin-top: 14px; }
 .table-wrap { overflow-x: auto; }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.big-num { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+.flash { text-align: center; padding: 32px 20px; display: grid; gap: 18px; }
+.flash-front { font-size: 22px; font-weight: 700; }
+.flash-back { font-size: 16px; line-height: 1.6; white-space: pre-wrap; padding: 14px; border-radius: 12px; background: var(--surface-2); text-align: left; }
+.card-item { padding: 12px 16px; }
+.card-item summary { cursor: pointer; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.card-back { margin: 10px 0; white-space: pre-wrap; color: var(--ink-2); }
 .steps { display: grid; gap: 6px; }
 .step-sec { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; }
 .step-sec:first-child { margin-top: 0; }
@@ -653,7 +663,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
   .day .dn { width: 100%; height: 24px; font-size: 12.5px; border-radius: 8px; }
   .day.today .dn { width: 24px; border-radius: 50%; }
   .day .ev { width: 6px; height: 6px; padding: 0; border: 0; border-radius: 50%; font-size: 0; background: var(--accent-2); box-shadow: none; }
-  .day .ev.schule { background: var(--ink-2); } .day .ev.feiertag { background: var(--red); } .day .ev.ferien { background: var(--coral); }
+  .day .ev.schule { background: var(--ink-2); } .day .ev.klausur { background: var(--red); } .day .ev.feiertag { background: var(--red); } .day .ev.ferien { background: var(--coral); }
   .day .ev.task, .day .ev.order { background: var(--muted); } .day .ev.work { background: var(--mint); }
   .day .more { font-size: 9.5px; width: 100%; text-align: center; padding: 0; }
   .chat { height: calc(100dvh - 280px); }
@@ -715,7 +725,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.11";
+const APP_VERSION = "2026-09-28.12";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -955,7 +965,7 @@ function seedState() {
   settings.profile.start = todayKey();
   return {
     settings, checklists: [], history: [], properties: [],
-    events: [], orders: [], days: {}, logs: [], reports: {}, chat: [], homework: [], flows: [], flowRuns: [],
+    events: [], orders: [], days: {}, logs: [], reports: {}, chat: [], homework: [], flows: [], flowRuns: [], grades: [], cards: [],
     flags: { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true }
   };
 }
@@ -1010,7 +1020,7 @@ function sanitizeEvent(e) {
   return {
     id: id(e.id), title: str(e.title, 200), date: e.date, allDay: !!e.allDay || !from, from, to: to && from && to > from ? to : "",
     place: str(e.place, 200), propId: typeof e.propId === "string" ? e.propId : "", note: str(e.note, 4000),
-    repeat: EV_REPEATS.includes(e.repeat) ? e.repeat : "keine", kind: e.kind === "schule" ? "schule" : "termin", report: e.report !== false
+    repeat: EV_REPEATS.includes(e.repeat) ? e.repeat : "keine", kind: ["schule", "klausur"].includes(e.kind) ? e.kind : "termin", subject: str(e.subject, 40), report: e.report !== false
   };
 }
 function sanitizeDay(d) {
@@ -1087,6 +1097,13 @@ function sanitizeState(raw) {
     homework: uniq(arr(s.homework).filter(h => h && str(h.text, 2000)).map(h => ({
       id: id(h.id), subject: str(h.subject, 80) || "Sonstiges", text: str(h.text, 2000), due: keyOr(h.due), done: !!h.done, at: num(h.at) ?? Date.now()
     }))).slice(-500),
+    grades: uniq(arr(s.grades).filter(g => g && str(g.subject, 40) && Number.isFinite(Number(g.value))).map(g => ({
+      id: id(g.id), subject: str(g.subject, 40), value: Math.min(6, Math.max(1, Math.round(Number(g.value) * 100) / 100)), weight: [1, 2, 3].includes(g.weight) ? g.weight : 1,
+      type: str(g.type, 40) || "Leistungsnachweis", date: keyOr(g.date) || todayKey(), note: str(g.note, 300)
+    }))).slice(-500),
+    cards: uniq(arr(s.cards).filter(c => c && str(c.front, 300)).map(c => ({
+      id: id(c.id), subject: str(c.subject, 40) || "Allgemein", front: str(c.front, 300), back: str(c.back, 2000), box: Math.min(5, Math.max(1, Number(c.box) || 1)), due: keyOr(c.due) || todayKey(), at: num(c.at) ?? Date.now()
+    }))).slice(-2000),
     flows: uniq(arr(s.flows).filter(f => f && str(f.title, 120)).map(f => ({
       id: id(f.id), title: str(f.title, 120), desc: str(f.desc, 400), updatedAt: num(f.updatedAt) ?? Date.now(),
       steps: arr(f.steps).filter(x => x && str(x.text, 400)).map(x => ({ id: id(x.id), text: str(x.text, 400), copy: str(x.copy, 4000) })).slice(0, 60)
@@ -1274,7 +1291,7 @@ function dayItems(k) {
   if (fer && !hol && (pkey(k).getDay() === 1 || !ferien(dkey(addDays(pkey(k), -1))))) items.push({ cls: "ferien", label: fer });
   if (d && d.status) items.push({ cls: "work", label: DAY_STATUS[d.status], time: true });
   else if (d && workMins(d)) items.push({ cls: "work", label: `Arbeit ${d.from}–${d.to}`, time: true });
-  eventsOn(k).forEach(e => items.push({ cls: e.kind === "schule" ? "schule" : "termin", label: (e.from ? e.from + " " : "") + e.title, ev: e.id }));
+  eventsOn(k).forEach(e => items.push({ cls: e.kind === "termin" ? "termin" : e.kind, label: (e.from ? e.from + " " : "") + e.title, ev: e.id }));
   state.checklists.forEach(l => { if (!l.template && !l.archived) l.tasks.forEach(t => { if (t.due === k) items.push({ cls: "task" + (t.completed ? " done" : ""), label: "Aufgabe: " + t.title, list: l.id }); }); });
   state.orders.forEach(o => { if (o.due === k) items.push({ cls: "order", label: "Auftrag: " + propLabel(getProp(o.propId)), order: o.id }); });
   state.homework.forEach(h => { if (h.due === k && !h.done) items.push({ cls: "task", label: `HA ${h.subject}: ${h.text}`, hw: true }); });
@@ -1450,6 +1467,7 @@ function randomWeek(n, sick, pool) {
       const opts = shuffle(pool.schule[sub]).map(t => `${sub}: ${t}`);
       out.push(opts.find(x => !used.has(norm(x))) || opts[0]);
     });
+    w.days.forEach(k => { if (!sickSet.has(k)) eventsOn(k).filter(e => e.kind === "klausur").forEach(e => out.push(`${e.title} (${WD[pkey(k).getDay()]} ${fmtDs(k)})`)); });
     const sickSchool = school.filter(k => sickSet.has(k));
     if (sickSchool.length) out.push(sickSchool.length === school.length ? `Krank (Berufsschule ${dayList(sickSchool)})` : `Krank: ${dayList(sickSchool)}`);
     schule = out.map(t => "-" + t).join("\n");
@@ -1517,6 +1535,8 @@ function parseRoute() {
     case "school": return { view: "school" };
     case "work": return { view: "work" };
     case "homework": return { view: "homework" };
+    case "grades": return { view: "grades" };
+    case "cards": return { view: "cards", mode: b === "lernen" ? "learn" : "list" };
     case "time": return { view: "time", date: isKey(b) ? b : todayKey() };
     case "calendar": return { view: "calendar", mode: ["month", "week", "day"].includes(b) ? b : "month", date: isKey(c) ? c : todayKey() };
     case "props": return { view: "props" };
@@ -1560,7 +1580,7 @@ const REPEAT_LABEL = { "täglich": "Täglich", werktags: "Werktags", "wöchentli
 function evLine(e, k) {
   const time = e.from ? `${e.from}${e.to ? "–" + e.to : ""}` : "ganztägig";
   const p = getProp(e.propId);
-  return `<div class="item"><span class="time">${time}</span><div class="grow"><button type="button" class="link-btn" data-act="edit-event" data-value="${e.id}" data-date="${k}" style="color:inherit;font-weight:500">${esc(e.title)}</button>${e.place || p ? `<div class="sub">${esc([e.place, p && propLabel(p)].filter(Boolean).join(" · "))}</div>` : ""}</div>${e.kind === "schule" ? `<span class="chip">Schule</span>` : ""}</div>`;
+  return `<div class="item"><span class="time">${time}</span><div class="grow"><button type="button" class="link-btn" data-act="edit-event" data-value="${e.id}" data-date="${k}" style="color:inherit;font-weight:500">${esc(e.title)}</button>${e.place || p ? `<div class="sub">${esc([e.place, p && propLabel(p)].filter(Boolean).join(" · "))}</div>` : ""}</div>${e.kind === "schule" ? `<span class="chip">Schule</span>` : e.kind === "klausur" ? `<span class="chip warn">Klausur</span>` : ""}</div>`;
 }
 function dueTasks(k) {
   const out = [];
@@ -1581,6 +1601,8 @@ const NAV = [
   ["overview", "#/", "dash", "Start", 1, ""],
   ["school", "#/school", "school", "Stundenplan", 0, "Schule"],
   ["homework", "#/homework", "note", "Hausaufgaben", 0, "Schule"],
+  ["grades", "#/grades", "star", "Noten", 0, "Schule"],
+  ["cards", "#/cards", "layers", "Lernkarten", 0, "Schule"],
   ["report", "#/report", "book", "Berichtsheft", 0, "Schule"],
   ["today", "#/today", "today", "Heute", 0, "Arbeit"],
   ["time", "#/time", "clock", "Zeiterfassung", 0, "Arbeit"],
@@ -1590,7 +1612,7 @@ const NAV = [
   ["tasks", "#/tasks", "clipboard", "Aufgaben", 0, "Arbeit"],
   ["settings", "#/settings", "sliders", "Einstellungen", 0, ""]
 ];
-const SCHOOL_VIEWS = ["school", "homework", "report"];
+const SCHOOL_VIEWS = ["school", "homework", "grades", "cards", "report"];
 const WORK_VIEWS = ["work", "today", "time", "props", "assistant", "tasks", "task", "lists", "templates"];
 function curNav(route) {
   if (["task", "list", "lists", "templates"].includes(route.view)) return "tasks";
@@ -1773,7 +1795,8 @@ function openQuick() {
     ${a("new-event", "cal", "Termin", `data-date="${k}"`)}
     ${a("goto", "note", "Hausaufgabe", 'data-value="/homework"')}
     ${a("day", "book", "Eintrag fürs Berichtsheft", `data-date="${k}"`)}
-    ${a("quick-order", "chat", "Auftrag anlegen")}
+    ${a("quick-order", "clipboard", "Auftrag an Handwerker")}
+    ${a("new-exam", "school", "Klausur / Prüfung")}
     ${a("new-list", "clipboard", "Checkliste")}
   </nav>` });
 }
@@ -1792,6 +1815,7 @@ function renderTimetable() {
   return `
     <div class="page-head"><div><p class="eyebrow">Schule · Stundenplan</p><h1>Was heute <span class="hl">dran ist.</span></h1><p class="lede">Berufsschule am Donnerstag und Freitag.${ns ? ` Nächster Schultag: ${fmtLong(ns)}.` : ""}</p></div></div>
     ${schoolTabs("school")}
+    ${examsPanel()}
     <div class="tt">${col(4)}${col(5)}</div>
     <form class="setting" id="schoolForm" style="margin-top:18px">
       <h3>Stundenplan bearbeiten</h3><p>Eine Stunde pro Zeile: „08:45-09:30 Fach | Lehrkraft | Raum“. Unterrichtszeiten zählen fürs Berichtsheft ohne Abzug der Pausen.</p>
@@ -1801,6 +1825,92 @@ function renderTimetable() {
       </div>
       <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="school-reseed">Berufsschultage im Kalender neu eintragen</button></div>
     </form>`;
+}
+/* ---------- Klausuren, Noten, Lernkarten ---------- */
+const upcomingExams = () => state.events.filter(e => e.kind === "klausur" && e.date >= todayKey()).sort((a, b) => a.date.localeCompare(b.date));
+const daysUntil = k => Math.round((pkey(k) - pkey(todayKey())) / 864e5);
+const inDays = k => { const d = daysUntil(k); return d === 0 ? "heute" : d === 1 ? "morgen" : `in ${d} Tagen`; };
+function examsPanel() {
+  const ex = upcomingExams().slice(0, 6);
+  return `<section class="panel panel-pad" style="margin-bottom:18px"><div class="sec-head"><h2>Klausuren und Prüfungen</h2><button type="button" class="btn small" data-act="new-exam">${icon("plus", 14)} Eintragen</button></div>
+    ${ex.length ? ex.map(e => `<div class="item"><span class="chip ${daysUntil(e.date) <= 3 ? "warn" : ""}">${inDays(e.date)}</span><button type="button" class="link-btn grow" data-act="edit-event" data-value="${e.id}" data-date="${e.date}" style="color:inherit;font-weight:500">${esc(e.title)}</button><span class="hint-text">${WD[pkey(e.date).getDay()]}, ${fmtD(e.date)}</span></div>`).join("")
+      : `<p class="hint-text">Keine anstehenden Klausuren. Mit „Eintragen“ landen sie im Kalender.</p>`}</section>`;
+}
+const GRADE_TYPES = [["Schulaufgabe", 2], ["Stegreifaufgabe / Test", 1], ["Kurzarbeit", 1], ["Mündlich / Referat", 1]];
+const avg = list => { const w = list.reduce((a, g) => a + g.weight, 0); return w ? list.reduce((a, g) => a + g.value * g.weight, 0) / w : 0; };
+const fmtGrade = v => v ? v.toFixed(2).replace(".", ",") : "–";
+function addGrade(subject, value, type, date, note) {
+  const t = GRADE_TYPES.find(x => x[0] === type) || GRADE_TYPES[1];
+  state.grades.push({ id: uid(), subject, value: Math.round(value * 100) / 100, weight: t[1], type: t[0], date: date || todayKey(), note: note || "" });
+}
+function renderGrades() {
+  const subs = [...new Set([...subjects(), ...state.grades.map(g => g.subject)])];
+  const bySub = subs.map(sub => ({ sub, list: state.grades.filter(g => g.subject === sub).sort((a, b) => b.date.localeCompare(a.date)) })).filter(x => x.list.length);
+  const overall = bySub.length ? bySub.reduce((a, x) => a + avg(x.list), 0) / bySub.length : 0;
+  return `
+    <div class="page-head"><div><p class="eyebrow">Schule · Noten</p><h1>Alle Noten. <span class="hl">Ein Schnitt.</span></h1><p class="lede">Schulaufgaben zählen doppelt. Der Gesamtschnitt ist der Mittelwert der Fächer.</p></div></div>
+    ${schoolTabs("grades")}
+    <form class="panel panel-pad form" id="gradeForm" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end;margin-bottom:18px" autocomplete="off">
+      <div class="field"><label for="gSub">Fach</label><input class="input" id="gSub" list="gSubList" value="${esc(ui.gradeSub || subs[0] || "")}" required><datalist id="gSubList">${subs.map(x => `<option value="${esc(x)}"></option>`).join("")}</datalist></div>
+      <div class="field"><label for="gVal">Note</label><input class="input" id="gVal" inputmode="decimal" placeholder="z. B. 2 oder 2,3" required></div>
+      <div class="field"><label for="gType">Art</label><select class="select" id="gType">${GRADE_TYPES.map(([t, w]) => `<option value="${esc(t)}">${esc(t)} (×${w})</option>`).join("")}</select></div>
+      <div class="field"><label for="gDate">Datum</label><input class="input" id="gDate" type="date" value="${todayKey()}"></div>
+      <div class="field"><label for="gNote">Thema</label><input class="input" id="gNote" maxlength="300" placeholder="optional"></div>
+      <button type="submit" class="btn primary">${icon("plus", 16)} Eintragen</button>
+    </form>
+    ${bySub.length ? `<div class="stat-row" style="margin-bottom:18px"><div class="panel panel-pad"><div class="hint-text">Gesamtschnitt</div><div class="big-num">${fmtGrade(overall)}</div></div>${bySub.map(x => `<div class="panel panel-pad"><div class="hint-text">${esc(x.sub)}</div><div class="big-num">${fmtGrade(avg(x.list))}</div></div>`).join("")}</div>
+      <div class="stack" style="gap:14px">${bySub.map(x => `<section class="panel panel-pad"><div class="sec-head"><h2>${esc(x.sub)}</h2><span class="hint-text">Schnitt ${fmtGrade(avg(x.list))} · ${plural(x.list.length, "Note", "Noten")}</span></div>
+        ${x.list.map(g => `<div class="item"><strong style="min-width:44px">${String(g.value).replace(".", ",")}</strong><div class="grow">${esc(g.type)}${g.weight > 1 ? ` <span class="hint-text">×${g.weight}</span>` : ""}${g.note ? `<div class="sub">${esc(g.note)}</div>` : ""}</div><span class="hint-text">${fmtD(g.date)}</span><button type="button" class="btn small icon quiet danger" data-act="grade-del" data-value="${g.id}" aria-label="Note löschen">${icon("trash", 15)}</button></div>`).join("")}</section>`).join("")}</div>`
+      : emptyState({ ic: "star", title: "Noch keine Noten", text: "Trag oben deine erste Note ein. Der Schnitt pro Fach rechnet sich selbst." })}`;
+}
+/* Lernkarten mit Wiederholung nach Kästen (1 = täglich … 5 = monatlich) */
+const BOX_DAYS = [0, 1, 3, 7, 14, 30];
+const dueCards = () => state.cards.filter(c => c.due <= todayKey());
+async function aiCard(term, subject) {
+  if (!sync.session) throw new Error("Bitte anmelden.");
+  await ensureToken();
+  const r = await fetch(`${SB.url}/functions/v1/lernkarte`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SB.key, Authorization: "Bearer " + sync.session.access_token }, body: JSON.stringify({ term, subject }) });
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(b.error || `Fehler ${r.status}`);
+  return b;
+}
+function renderCards(route) {
+  const subs = [...new Set([...subjects(), ...state.cards.map(c => c.subject)])];
+  const due = dueCards();
+  if (route.mode === "learn") {
+    if (!ui.learn) ui.learn = { queue: due.map(c => c.id).sort(() => Math.random() - .5), show: false, right: 0, wrong: 0 };
+    const c = state.cards.find(x => x.id === ui.learn.queue[0]);
+    return `
+      <div class="page-head"><div><p class="eyebrow"><a href="#/cards">Lernkarten</a> · Lernen</p><h1>${c ? `Noch <span class="hl">${ui.learn.queue.length}</span> ${ui.learn.queue.length === 1 ? "Karte" : "Karten"}.` : "Alles gelernt."}</h1><p class="lede">${ui.learn.right} gewusst · ${ui.learn.wrong} nochmal</p></div></div>
+      ${c ? `<section class="panel panel-pad flash"><div class="hint-text">${esc(c.subject)} · Kasten ${c.box}</div><div class="flash-front">${esc(c.front)}</div>
+        ${ui.learn.show ? `<div class="flash-back">${esc(c.back)}</div><div class="btn-row" style="justify-content:center"><button type="button" class="btn danger" data-act="card-wrong">Nochmal</button><button type="button" class="btn primary" data-act="card-right">${icon("check", 16)} Gewusst</button></div>`
+          : `<div class="btn-row" style="justify-content:center"><button type="button" class="btn primary" data-act="card-show">Antwort zeigen</button></div>`}</section>`
+        : `${emptyState({ ic: "check", title: "Für heute fertig", text: "Alle fälligen Karten sind durch. Die nächsten kommen, wenn sie wieder dran sind." })}<div class="btn-row" style="justify-content:center;margin-top:12px"><a class="btn" href="#/cards">Zu den Karten</a></div>`}`;
+  }
+  ui.learn = null;
+  const sub = ui.cardSub && subs.includes(ui.cardSub) ? ui.cardSub : "";
+  const list = state.cards.filter(c => !sub || c.subject === sub).sort((a, b) => b.at - a.at);
+  const draft = ui.cardDraft || {};
+  return `
+    <div class="page-head"><div><p class="eyebrow">Schule · Lernkarten</p><h1>Kurz lernen. <span class="hl">Lange merken.</span></h1><p class="lede">Begriff eingeben, die KI schreibt die Karte, du prüfst sie. Gewusste Karten kommen seltener dran.</p></div>
+      <div class="head-actions"><a class="btn primary" href="#/cards/lernen">${icon("play", 16)} Lernen (${due.length} fällig)</a></div></div>
+    ${schoolTabs("cards")}
+    <section class="panel panel-pad" style="margin-bottom:18px">
+      <div class="sec-head"><h2>Neue Karte</h2></div>
+      <form class="form" id="cardAiForm" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;align-items:end" autocomplete="off">
+        <div class="field"><label for="caTerm">Begriff (1–3 Wörter)</label><input class="input" id="caTerm" maxlength="80" value="${esc(draft.term || "")}" placeholder="z. B. Grundbuch"></div>
+        <div class="field"><label for="caSub">Fach</label><input class="input" id="caSub" list="caSubList" value="${esc(draft.subject || sub || subs[0] || "")}"><datalist id="caSubList">${subs.map(x => `<option value="${esc(x)}"></option>`).join("")}</datalist></div>
+        <button type="submit" class="btn primary" ${ui.cardBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.cardBusy ? "Schreibt …" : "Mit KI erstellen"}</button>
+      </form>
+      <form class="form" id="cardForm" style="margin-top:12px" autocomplete="off">
+        <div class="field"><label for="cFront">Vorderseite (Frage)</label><textarea class="textarea" id="cFront" rows="2" maxlength="300" required>${esc(draft.front || "")}</textarea></div>
+        <div class="field"><label for="cBack">Rückseite (Antwort)</label><textarea class="textarea" id="cBack" rows="3" maxlength="2000">${esc(draft.back || "")}</textarea></div>
+        <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Karte speichern</button><span class="hint-text" style="align-self:center">Ohne KI: Felder einfach selbst ausfüllen.</span></div>
+      </form>
+    </section>
+    <div class="toolbar"><div class="tabs" role="group" aria-label="Fach"><button type="button" data-act="card-sub" data-value="" aria-pressed="${!sub}">Alle (${state.cards.length})</button>${subs.filter(x => state.cards.some(c => c.subject === x)).map(x => `<button type="button" data-act="card-sub" data-value="${esc(x)}" aria-pressed="${sub === x}">${esc(x)}</button>`).join("")}</div></div>
+    <div class="stack" style="gap:10px">${list.length ? list.map(c => `<details class="panel card-item"><summary><strong>${esc(c.front)}</strong><span class="hint-text">${esc(c.subject)} · Kasten ${c.box}${c.due <= todayKey() ? " · fällig" : ` · ab ${fmtDs(c.due)}`}</span></summary><div class="card-back">${esc(c.back)}</div><div class="btn-row"><button type="button" class="btn small danger" data-act="card-del" data-value="${c.id}">${icon("trash", 14)} Löschen</button></div></details>`).join("")
+      : emptyState({ ic: "layers", title: "Noch keine Lernkarten", text: "Begriff eingeben und „Mit KI erstellen“ drücken oder selbst schreiben." })}</div>`;
 }
 function renderHomework() {
   const k = todayKey(), subs = subjects();
@@ -2253,133 +2363,274 @@ function renderCalendar(route) {
     <div class="page-head"><div><p class="eyebrow">Arbeit · Kalender</p><h1>Die Woche <span class="hl">im Griff.</span></h1><p class="lede">Termine, Schule, Aufgaben und Zeiten. Tipp auf einen Tag für Details.</p></div>
       <div class="head-actions"><button type="button" class="btn" data-act="ics">${icon("download", 16)} .ics exportieren</button><button type="button" class="btn primary" data-act="new-event" data-date="${date}">${icon("plus", 16)} Termin</button></div></div>
     ${calNav(mode, date)}${body}
-    <div class="legend"><span><i style="background:var(--accent-soft)"></i>Termin</span><span><i style="background:var(--surface-2);border-left:3px solid var(--accent)"></i>Berufsschule</span><span><i style="border:1px dashed var(--line-strong)"></i>Aufgabe / Auftrag</span><span><i style="background:var(--green-soft)"></i>Arbeitszeit</span><span><i style="background:var(--red-soft)"></i>Feiertag</span><span><i style="background:var(--warn-soft)"></i>Schulferien</span></div>`;
+    <div class="legend"><span><i style="background:var(--accent-soft)"></i>Termin</span><span><i style="background:var(--surface-2);border-left:3px solid var(--accent)"></i>Berufsschule</span><span><i style="background:var(--red-soft);border-left:3px solid var(--red)"></i>Klausur / Prüfung</span><span><i style="border:1px dashed var(--line-strong)"></i>Aufgabe / Auftrag</span><span><i style="background:var(--green-soft)"></i>Arbeitszeit</span><span><i style="background:var(--red-soft)"></i>Feiertag</span><span><i style="background:var(--warn-soft)"></i>Schulferien</span></div>`;
 }
 
 /* ==========================================================
-   Assistent (regelbasiert, ohne Internet)
+   Assistent (regelbasiert, ohne Internet): versteht Datum, Uhrzeit, Fächer, Gewerke und Fachbegriffe
    ========================================================== */
 let chatBtns = [];
 const say = (text, btns) => { state.chat.push({ from: "bot", text }); state.chat = state.chat.slice(-200); chatBtns = btns || []; };
-const HELP = "Ich helfe dir bei Aufträgen, Aufgaben und Fragen zu Liegenschaften. Probier z. B.:\n• „Auftrag anlegen“\n• „Welche Firma hat 10100?“\n• „Was betreut AB?“\n• „Hauptstr.“\n• „Checkliste abarbeiten“\n• „Termine heute“";
+const HELP = "Schreib einfach, was du brauchst. Zum Beispiel:\n• „Auftrag Wasserhahn defekt Müller 10100“\n• „Termin morgen 14 Uhr Besichtigung Hauptstr. 5“\n• „Klausur IWi am 15.10.“\n• „Hausaufgabe D bis Freitag Erörterung“\n• „Note 2,3 in KSC Schulaufgabe“\n• „Lernkarte Grundbuch“\n• „Ich bin morgen krank“ · „Urlaub 12.10. bis 16.10.“\n• „Eintrag: Post bearbeitet“ (fürs Berichtsheft)\n• „Was ist heute?“ · „Nächste Klausur?“ · „Stundenkonto?“ · „Mein Schnitt?“\n• „Was habe ich Donnerstag?“ · „Welche Firma hat 10100?“ · „Was betreut AB?“\n• „Was ist eine Kaution?“ (über 20 Fachbegriffe)";
 const baseBtns = () => [
-  { label: "Auftrag anlegen", run: () => startOrder() },
-  { label: "Checkliste abarbeiten", run: () => pickList() },
-  { label: "Termine heute", run: () => answer("termine heute") }
+  { label: "Auftrag starten", run: () => startAuftrag({}) },
+  { label: "Was ist heute?", run: () => answer("was ist heute") },
+  { label: "Nächste Klausur", run: () => answer("nächste klausur") },
+  { label: "Stundenkonto", run: () => answer("stundenkonto") },
+  { label: "Hilfe", run: () => say(HELP, baseBtns()) }
 ];
-const stepDef = s => { const [label, opts] = s.split("|"); return { label: label.trim(), options: (opts || "").split(",").map(x => x.trim()).filter(Boolean) }; };
 const propInfo = p => `${p.name}\nVE ${p.ve} · ${p.firma} (Firma ${p.firmaNr})\nSachbearbeiter: ${p.sb || "–"}${p.ort ? `\nOrt: ${p.ort}` : ""}`;
+const openBtn = (label, path) => ({ label, run: () => { saveState(); go(path); } });
+const undoBtn = snap => ({ label: "Rückgängig", run: () => { state = sanitizeState(JSON.parse(snap)); saveState(); say("Rückgängig gemacht.", baseBtns()); } });
 
-function startOrder(p) {
-  if (!state.properties.length) { ui.flow = null; return say("Es sind noch keine Liegenschaften da. Importiere sie unter Liegenschaften → CSV importieren, dann kann ich Aufträge anlegen.", baseBtns()); }
-  ui.flow = { type: "order", prop: null, i: 0, answers: [] };
-  if (p) return pickProp(p);
-  say("Für welche Liegenschaft ist der Auftrag? Tippe Straße, einen Teil des Namens oder die VE-Nummer.", [{ label: "Abbrechen", run: stopFlow }]);
+/* ---------- Wissen ---------- */
+const SUBJECT_WORDS = { immobilienwirtschaft: "IWi", immobilien: "IWi", iwi: "IWi", deutsch: "D", englisch: "E", english: "E", politik: "PuG", pug: "PuG", sozialkunde: "PuG", ksc: "KSC", controlling: "KSC", rechnungswesen: "KSC", buchfuhrung: "KSC", steuerung: "KSC" };
+function findSubject(text) {
+  const words = text.split(/[^A-Za-zÄÖÜäöüß-]+/).filter(Boolean);
+  const subs = subjects();
+  const direct = words.find(w => subs.some(x => x.toLowerCase() === w.toLowerCase()));
+  if (direct) return subs.find(x => x.toLowerCase() === direct.toLowerCase());
+  for (const w of words) { const c = SUBJECT_WORDS[norm(w)]; if (c) return c; }
+  const short = words.find(w => /^(D|E)$/.test(w));
+  return short || "";
 }
-function pickProp(p) {
-  ui.flow.prop = p.id;
-  say(`${propInfo(p)}`);
-  askStep();
+const GEWERK_WORDS = [
+  [/wasserhahn|armatur|toilette|wc|spulung|dusche|waschbecken|warmwasser|boiler|leitung.*(tropf|undicht)|rohrbruch/, "Sanitär"],
+  [/abfluss|verstopf|kanal/, "Rohrreinigung"],
+  [/heizung|heizkorper|thermostat|therme|warm wird|kalt/, "Heizung"],
+  [/steckdose|strom|licht|lampe|beleuchtung|sicherung|klingel|sprechanlage|elektr/, "Elektro"],
+  [/fensterscheibe|scheibe|glas/, "Glaser"],
+  [/fenster|tur\b|ture|turschloss|schrank|parkett|holz/, "Schreiner"],
+  [/rollladen|jalousie/, "Rollladen"],
+  [/schimmel|wand|decke|fleck|streichen|tapete|riss/, "Maler"],
+  [/dach|ziegel|dachrinne|regenrinne/, "Dach / Spengler"],
+  [/fliese/, "Fliesen"],
+  [/schlussel|schloss|ausgesperrt/, "Schlüsseldienst"],
+  [/aufzug|lift/, "Aufzug"],
+  [/rauchmelder/, "Rauchmelder"],
+  [/maus|mause|ratte|kakerlak|wespe|ungeziefer|schadling/, "Schädlingsbekämpfung"],
+  [/baum|hecke|garten|rasen/, "Garten"],
+  [/treppenhaus.*(schmutz|reinig)|reinigung/, "Reinigung"]
+];
+const findGewerk = text => { const n = norm(text); const hit = GEWERK_WORDS.find(([re]) => re.test(n)); return hit ? hit[1] : ""; };
+const GLOSSAR = [
+  [/kaution|mietsicherheit/, "Mietkaution", "Höchstens drei Nettokaltmieten (§ 551 BGB). Der Mieter darf sie in drei Monatsraten zahlen. Der Vermieter muss sie getrennt von seinem Vermögen anlegen, die Zinsen stehen dem Mieter zu."],
+  [/betriebskosten|nebenkosten\b/, "Betriebskosten", "Laufende Kosten des Eigentümers für das Gebäude, die nach Mietvertrag auf den Mieter umgelegt werden dürfen. Welche das sind, regelt die Betriebskostenverordnung (§ 2 BetrKV), z. B. Grundsteuer, Wasser, Abwasser, Müll, Hausmeister, Gartenpflege, Versicherungen. Nicht umlegbar: Verwaltung und Instandhaltung."],
+  [/nebenkostenabrechnung|betriebskostenabrechnung|abrechnungsfrist/, "Betriebskostenabrechnung", "Einmal jährlich, Abrechnungszeitraum höchstens 12 Monate. Sie muss dem Mieter spätestens 12 Monate nach Ende des Zeitraums zugehen, sonst sind Nachforderungen meist ausgeschlossen (§ 556 Abs. 3 BGB). Der Mieter hat danach 12 Monate für Einwendungen."],
+  [/mietminderung|mindern|minderung/, "Mietminderung", "Hat die Wohnung einen Mangel, der die Nutzung beeinträchtigt, ist die Miete kraft Gesetz gemindert (§ 536 BGB). Der Mieter muss den Mangel unverzüglich anzeigen (§ 536c BGB). Die Höhe hängt vom Einzelfall ab."],
+  [/kundigungsfrist|kundigung/, "Kündigung Wohnraum", "Mieter: 3 Monate Frist, ohne Grund (§ 573c BGB). Vermieter: 3 Monate, nach 5 Jahren 6, nach 8 Jahren 9 Monate, und er braucht ein berechtigtes Interesse, z. B. Eigenbedarf (§ 573 BGB). Immer schriftlich (§ 568 BGB)."],
+  [/mieterhohung|vergleichsmiete|kappungsgrenze|mietspiegel/, "Mieterhöhung bis zur Vergleichsmiete", "Nach § 558 BGB bis zur ortsüblichen Vergleichsmiete, begründet z. B. mit Mietspiegel. Kappungsgrenze: höchstens 20 % in 3 Jahren, in angespannten Wohnungsmärkten 15 %. Wirksam frühestens 15 Monate nach Einzug oder letzter Erhöhung; der Mieter hat Zeit zur Zustimmung bis Ende des übernächsten Monats nach Zugang (§ 558b BGB)."],
+  [/modernisierung/, "Modernisierungsumlage", "Nach einer Modernisierung dürfen jährlich 8 % der Kosten auf die Miete umgelegt werden (§ 559 BGB). Grenze: höchstens 3 € pro m² in 6 Jahren, bei Mieten unter 7 €/m² höchstens 2 €. Die Modernisierung muss vorher angekündigt werden (§ 555c BGB)."],
+  [/schonheitsreparatur|renovier/, "Schönheitsreparaturen", "Streichen von Wänden, Decken, Heizkörpern, Innentüren usw. Grundsätzlich Sache des Vermieters. Der Mieter muss sie nur bei einer wirksamen Klausel übernehmen; bei unrenoviert übergebenen Wohnungen ist die Klausel meist unwirksam (BGH 2015)."],
+  [/grundbuch/, "Grundbuch", "Öffentliches Register beim Amtsgericht. Aufbau: Aufschrift, Bestandsverzeichnis (Grundstück), Abteilung I (Eigentümer), Abteilung II (Lasten und Beschränkungen, z. B. Wegerecht, Vorkaufsrecht), Abteilung III (Grundpfandrechte: Grundschuld, Hypothek)."],
+  [/sondereigentum|gemeinschaftseigentum|weg\b|wohnungseigentum/, "Wohnungseigentum (WEG)", "Sondereigentum: die Räume der eigenen Wohnung. Gemeinschaftseigentum: Grundstück, tragende Wände, Dach, Fassade, Treppenhaus, Leitungen bis zur Abzweigung. Entscheidungen trifft die Eigentümerversammlung, mindestens einmal im Jahr (§ 24 WEG); der Verwalter führt die Beschlüsse aus."],
+  [/hausgeld|wirtschaftsplan/, "Hausgeld", "Monatliche Vorauszahlung der Wohnungseigentümer an die Gemeinschaft, festgelegt im Wirtschaftsplan. Nach Jahresende folgt die Jahresabrechnung. Enthält auch nicht umlegbare Kosten wie Verwaltung und Erhaltungsrücklage."],
+  [/rucklage|erhaltungsrucklage|instandhaltungsrucklage/, "Erhaltungsrücklage", "Geldreserve der Eigentümergemeinschaft für künftige Reparaturen am Gemeinschaftseigentum (früher Instandhaltungsrücklage, § 19 WEG). Wird über das Hausgeld angespart."],
+  [/nettokalt|warmmiete|bruttokalt|kaltmiete/, "Mietbegriffe", "Nettokaltmiete: Miete ohne Nebenkosten. Bruttokaltmiete: inklusive kalter Betriebskosten, ohne Heizung. Warmmiete: inklusive aller Betriebskosten und Heizung."],
+  [/ubergabeprotokoll|wohnungsubergabe|abnahme/, "Übergabeprotokoll", "Hält bei Ein- oder Auszug den Zustand der Räume, vorhandene Mängel, Zählerstände und die Anzahl der Schlüssel fest. Beide Seiten unterschreiben. Wichtig als Beweis für spätere Schäden und die Kaution."],
+  [/mangelrug/, "Mängelrüge", "Beanstandung einer mangelhaften Leistung gegenüber dem Auftragnehmer, z. B. wenn ein Handwerker nicht ordentlich gearbeitet hat. Setzt eine Frist zur Nacherfüllung und sichert Gewährleistungsrechte."],
+  [/gewahrleistung|verjahrung/, "Gewährleistung beim Werkvertrag", "Mängelansprüche verjähren bei Bauwerken nach 5 Jahren, bei sonstigen Werkleistungen meist nach 2 Jahren (§ 634a BGB), jeweils ab Abnahme."],
+  [/verkehrssicherung|winterdienst|streupflicht/, "Verkehrssicherungspflicht", "Der Eigentümer muss dafür sorgen, dass von Grundstück und Gebäude keine Gefahr ausgeht: Winterdienst, Beleuchtung, Baumkontrolle, sichere Treppen. Er kann Aufgaben übertragen (z. B. per Hausordnung oder Dienstleister), muss das aber kontrollieren."],
+  [/rauchmelder/, "Rauchmelder in Bayern", "Pflicht in Schlafräumen, Kinderzimmern und Fluren, die zu Aufenthaltsräumen führen (Art. 46 Abs. 4 BayBO). Einbau durch den Eigentümer; für die Betriebsbereitschaft ist der Bewohner zuständig, außer der Eigentümer übernimmt das."],
+  [/wohnungsgeberbestatigung|meldebescheinigung/, "Wohnungsgeberbestätigung", "Der Vermieter muss dem Mieter Ein- oder Auszug schriftlich bestätigen, damit er sich innerhalb von 2 Wochen beim Bürgerbüro an- oder abmelden kann (§ 19 Bundesmeldegesetz)."],
+  [/staffelmiete|indexmiete/, "Staffel- und Indexmiete", "Staffelmiete: Erhöhungen sind vorab mit Datum und Betrag festgelegt (§ 557a BGB). Indexmiete: Die Miete folgt dem Verbraucherpreisindex (§ 557b BGB). In beiden Fällen gibt es keine zusätzliche Erhöhung auf die Vergleichsmiete."],
+  [/umlageschlussel|heizkosten/, "Umlageschlüssel", "Regelt, wie Kosten verteilt werden: nach Wohnfläche, Personen, Einheiten oder Verbrauch. Heizung und Warmwasser müssen zu 50–70 % nach Verbrauch abgerechnet werden (Heizkostenverordnung)."],
+  [/eigenbedarf/, "Eigenbedarf", "Kündigungsgrund, wenn der Vermieter die Wohnung für sich, Familienangehörige oder Haushaltsangehörige braucht (§ 573 Abs. 2 Nr. 2 BGB). Muss im Kündigungsschreiben konkret begründet sein."],
+  [/instandhaltung|instandsetzung|budgetposition/, "Instandhaltung", "Erhaltung des ordnungsgemäßen Zustands: Wartung, Pflege und Reparaturen. Planmäßige Instandhaltung ist vorhersehbar (z. B. Wartung, Verschleiß); Instandsetzung behebt einen eingetretenen Schaden."],
+  [/casavi/, "casavi", "Kundenportal und Vorgangsmanagement: Mieter und Eigentümer melden dort Anliegen, sehen Dokumente und Aushänge. Du antwortest im Vorgang und hängst z. B. den Auftrag an."],
+  [/immotion/, "Immotion", "Verwaltungsprogramm (ERP): Stammdaten, Verträge, Aufträge, Buchhaltung. Aufträge erstellst du über den Mieter: Doppelklick › Weitere Aktionen › Auftrag erstellen. Den ganzen Ablauf findest du unter Aufgaben."]
+];
+const glossarHit = n => GLOSSAR.find(([re]) => re.test(n));
+
+/* ---------- Datum und Uhrzeit aus Text ---------- */
+const WDN = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"];
+function futureDate(k) { if (!k) return ""; if (/\d{1,2}\.\d{1,2}\.\d{2,4}/.test(k)) return k; return k; }
+function parseWhen(text) {
+  let s = ` ${text} `, date = "", date2 = "", from = "", to = "";
+  const cut = re => { const m = s.match(re); if (m) s = s.replace(m[0], " "); return m; };
+  const today = todayKey(), hm = (h, m) => `${pad(Math.min(23, Number(h)))}:${pad(Number(m || 0))}`;
+  const dm = str => { let k = parseDate(str); if (k && k < today && !/\.\d{2,4}\s*$/.test(str.trim())) { const d = pkey(k); d.setFullYear(d.getFullYear() + 1); k = dkey(d); } return k; };
+  let m;
+  if ((m = cut(/\b(?:vom\s+|von\s+)?(\d{1,2}\.\d{1,2}\.(?:\d{2,4})?)\s*(?:bis|-|–)\s*(\d{1,2}\.\d{1,2}\.(?:\d{2,4})?)/i))) { date = dm(m[1]); date2 = dm(m[2]); }
+  if ((m = cut(/\b(?:von\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*(?:uhr\s*)?(?:bis|-|–)\s*(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b/i))) { from = hm(m[1], m[2]); to = hm(m[3], m[4]); }
+  else if ((m = cut(/\b(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:uhr\s*)?(?:bis|-|–)\s*(\d{1,2}):(\d{2})/i))) { from = hm(m[1], m[2]); to = hm(m[3], m[4]); }
+  else if ((m = cut(/\b(?:um|ab)?\s*(\d{1,2}):(\d{2})\s*(?:uhr)?/i)) || (m = cut(/\b(?:um|ab)?\s*(\d{1,2})\s*uhr\b/i))) from = hm(m[1], m[2]);
+  if (!date) {
+    if ((m = cut(/\b(?:am\s+|bis\s+|ab\s+)?(\d{1,2}\.\d{1,2}\.(?:\d{2,4})?)/i))) date = dm(m[1]);
+    else if ((m = cut(/(?<![A-Za-zÄÖÜäöüß])(?:bis\s+)?(heute|übermorgen|uebermorgen|morgen)(?![A-Za-zÄÖÜäöüß])/i))) date = dkey(addDays(pkey(today), { heute: 0, morgen: 1 }[m[1].toLowerCase()] ?? 2));
+    else if ((m = cut(/\bin\s+(\d{1,3})\s+tag(?:en)?\b/i))) date = dkey(addDays(pkey(today), Number(m[1])));
+    else if ((m = cut(/(?<![A-Za-zÄÖÜäöüß])nächste[nr]?\s+woche\s+(?:am\s+)?(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/i))) date = dkey(addDays(monday(pkey(today)), 7 + (WDN.indexOf(m[1].toLowerCase()) + 6) % 7));
+    else if ((m = cut(/(?<![A-Za-zÄÖÜäöüß])nächste[nr]?\s+woche\b/i))) date = dkey(addDays(monday(pkey(today)), 7));
+    else if ((m = cut(/\b(?:am\s+|bis\s+|ab\s+)?(nächsten|nächste|kommenden|diesen)?\s*(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/i))) {
+      const wd = WDN.indexOf(m[2].toLowerCase()), cur = pkey(today).getDay();
+      let add = (wd - cur + 7) % 7;
+      if (add === 0 && m[1] && /nächst|kommend/i.test(m[1])) add = 7;
+      date = dkey(addDays(pkey(today), add));
+    }
+  }
+  return { date, date2, from, to, rest: s.replace(/\s+/g, " ").trim() };
 }
-function askStep() {
-  const f = ui.flow, steps = state.settings.orderSteps;
-  if (f.i >= steps.length) return finishOrder();
-  const s = stepDef(steps[f.i]);
-  say(`Schritt ${f.i + 1} von ${steps.length}: ${s.label}`, [
-    ...s.options.map(o => ({ label: o, run: () => { state.chat.push({ from: "me", text: o }); stepAnswer(o); } })),
-    { label: "Überspringen", run: () => stepAnswer("") },
-    { label: "Abbrechen", run: stopFlow }
-  ]);
+const dayWord = k => k === todayKey() ? "heute" : k === dkey(addDays(new Date(), 1)) ? "morgen" : `${WD[pkey(k).getDay()]}, ${fmtD(k)}`;
+const clean = (t, words) => t.replace(words, " ").replace(/(^|\s)(bitte|mal|eintragen|anlegen|erstellen|starten|hinzufügen|neue[rn]?|eine[nr]?|ein|am|um)(?=\s|$)/gi, " ").replace(/^[\s:,.–-]+|[\s:,.–-]+$/g, "").replace(/\s+/g, " ").trim();
+const isQuestion = (q, n) => /\?\s*$/.test(q) || /^(was|wann|welche[rsn]?|wie|wo|zeig|gibt es|habe ich|hab ich|steht|stehen|sag)\b/.test(n);
+
+/* ---------- Aktionen ---------- */
+function startAuftrag(pre) {
+  const run = startFlow("auftrag", false);
+  Object.entries(pre).forEach(([k, v]) => { if (v) run.data[k] = v; });
+  saveState();
+  return run;
 }
-function stepAnswer(a) {
-  const f = ui.flow;
-  f.answers.push({ q: stepDef(state.settings.orderSteps[f.i]).label, a });
-  f.i++;
-  askStep();
+function eventsText(k) {
+  const evs = eventsOn(k).filter(e => e.kind !== "schule"), sch = eventsOn(k).some(e => e.kind === "schule"), hol = holiday(k);
+  const lines = [];
+  if (hol) lines.push(`Feiertag: ${hol}`);
+  if (sch) lines.push(`Berufsschule${lessonsOf(k).length ? ": " + [...new Set(lessonsOf(k).map(l => l.subject))].join(", ") : ""}`);
+  evs.forEach(e => lines.push(`${e.from ? e.from + (e.to ? "–" + e.to : "") : "ganztägig"} ${e.title}`));
+  state.flowRuns.filter(r => !r.doneAt && r.data.frist === k).forEach(r => lines.push(`Frist: ${r.data.mangel || r.title}`));
+  state.homework.filter(h => !h.done && h.due === k).forEach(h => lines.push(`Hausaufgabe ${h.subject}: ${h.text}`));
+  return lines.length ? lines.map(l => "• " + l).join("\n") : "Nichts eingetragen.";
 }
-const qLabel = q => q.replace(/\s*\(.*\)$/, "").replace(/[?:]\s*$/, "").trim();
-function orderText(o) {
-  const p = getProp(o.propId);
-  return [`Auftrag – ${p ? p.name : "Liegenschaft"}`, p ? `VE: ${p.ve} | Firma: ${p.firma} (Firma ${p.firmaNr}) | Sachbearbeiter: ${p.sb || "–"}` : "", ...o.answers.filter(x => x.a).map(x => `${qLabel(x.q)}: ${x.a}`), `Erfasst am ${fmtD(dkey(o.at))}`].filter(Boolean).join("\n");
+function setDayStatus(from, to, status) {
+  const days = [];
+  for (let d = pkey(from); dkey(d) <= (to || from); d = addDays(d, 1)) { const k = dkey(d); if (d.getDay() >= 1 && d.getDay() <= 5 && !holiday(k)) days.push(k); }
+  days.forEach(k => { state.days[k] = { ...sanitizeDay(state.days[k]), status }; });
+  return days;
 }
-function finishOrder() {
-  const f = ui.flow, p = getProp(f.prop);
-  const dueAns = f.answers.find(x => /termin|datum/i.test(x.q));
-  const o = { id: uid(), at: Date.now(), propId: f.prop, answers: f.answers, due: parseDate(dueAns && dueAns.a) };
-  o.summary = orderText(o);
-  state.orders.push(o);
-  const desc = (f.answers[0] || {}).a;
-  addLog(`Erstellung eines Auftrags für ${p.name} (VE ${p.ve})${desc ? ": " + desc : ""}`, "order", o.id);
-  ui.flow = null;
-  say(`Zusammenfassung:\n\n${o.summary}\n\nDer Auftrag ist gespeichert und mit der Liegenschaft verknüpft.`, [
-    { label: "Kopieren", run: () => copyText(o.summary) },
-    { label: "Als Aufgabe anlegen", run: () => orderToTask(o) },
-    { label: "Als Termin anlegen", run: () => orderToEvent(o) },
-    { label: "Neuer Auftrag", run: () => startOrder() }
-  ]);
-}
-function orderToTask(o) {
-  const p = getProp(o.propId), desc = (o.answers[0] || {}).a || "Auftrag";
-  inbox().tasks.push(makeTask({ title: `${desc} – ${p ? p.name : ""}`.slice(0, 300), due: o.due, propId: o.propId, category: "Auftrag", note: o.summary, priority: /dringend|notfall/i.test(o.summary) ? "high" : "normal" }));
-  say(`Aufgabe angelegt${o.due ? `, fällig am ${fmtD(o.due)}` : ""}. Du findest sie unter Checklisten → Aufgaben.`, baseBtns());
-}
-function orderToEvent(o) {
-  const p = getProp(o.propId), desc = (o.answers[0] || {}).a || "Auftrag";
-  state.events.push(makeEvent({ title: `${desc} – ${p ? p.name : ""}`.slice(0, 200), date: o.due || todayKey(), allDay: true, propId: o.propId, note: o.summary }));
-  say(`Termin am ${fmtD(o.due || todayKey())} angelegt.`, baseBtns());
-}
-function pickList() {
-  const lists = runs().filter(l => l.tasks.some(t => !t.completed && !t.skipped));
-  if (!lists.length) return say("Es gibt gerade keine offene Checkliste oder Aufgabe.", baseBtns());
-  say("Welche Checkliste gehen wir durch?", lists.slice(0, 10).map(l => ({ label: l.title, run: () => startList(l.id) })));
-}
-function startList(listId) {
-  ui.flow = { type: "list", listId, skip: new Set() };
-  nextListStep();
-}
-function nextListStep() {
-  const f = ui.flow, l = getList(f.listId);
-  const t = l && l.tasks.find(x => !x.completed && !x.skipped && !f.skip.has(x.id));
-  if (!t) { ui.flow = null; return say(l && isDone(l) ? `„${l.title}“ ist abgeschlossen. Gut gemacht!` : "Keine offenen Punkte mehr in dieser Runde.", baseBtns()); }
-  const s = stats(l);
-  say(`${s.reqDone}/${s.reqTotal} erledigt. Nächster Punkt:\n${t.title}${t.type === "optional" ? " (optional)" : ""}${t.hint ? `\nHinweis: ${t.hint}` : ""}${t.note ? `\nNotiz: ${t.note}` : ""}`, [
-    { label: "Erledigt", run: () => { setCompleted(l, t, true); nextListStep(); } },
-    { label: t.type === "optional" ? "Überspringen" : "Später", run: () => { if (t.type === "optional") { t.skipped = true; touch(l); } else f.skip.add(t.id); nextListStep(); } },
-    { label: "Stopp", run: stopFlow }
-  ]);
-}
-function stopFlow() { ui.flow = null; say("Alles klar, abgebrochen. Womit kann ich helfen?", baseBtns()); }
+
 function answer(text) {
-  const q = text.trim(), n = norm(q), f = ui.flow;
-  if (f && f.type === "order" && !f.prop) {
-    const hits = propMatches(q);
-    if (hits.length === 1) return pickProp(hits[0]);
-    if (!hits.length) return say("Dazu finde ich keine Liegenschaft. Versuch es mit einem anderen Teil der Straße oder der VE-Nummer.", [{ label: "Abbrechen", run: stopFlow }]);
-    return say(`Ich habe ${hits.length} Treffer. Welche meinst du?`, [...hits.slice(0, 12).map(p => ({ label: `${p.ve} ${p.name} (${p.sb})`, run: () => pickProp(p) })), { label: "Abbrechen", run: stopFlow }]);
+  const q = text.trim(), n = norm(q), ask = isQuestion(q, n), when = parseWhen(q);
+  if (/^(hilfe|help|was kannst|befehle|\?)/.test(n)) return say(HELP, baseBtns());
+  const snap = snapshot();
+
+  /* Fachbegriffe */
+  const gl = glossarHit(n);
+  if (gl && (/was (ist|sind|bedeutet|heisst)|erklar|definition|wie (lange|hoch|viel)|frist|regel/.test(n) || (q.split(/\s+/).length <= 3 && !/auftrag|defekt|kaputt|piept|termin|klausur|hausaufgabe|note|lernkarte|krank|urlaub/.test(n)))) return say(`${gl[1]}\n${gl[2]}\n\nKeine Rechtsberatung – im Zweifel beim Sachbearbeiter nachfragen.`, [{ label: "Als Lernkarte speichern", run: () => { state.cards.push({ id: uid(), subject: "IWi", front: `Was bedeutet „${gl[1]}“?`, back: gl[2], box: 1, due: todayKey(), at: Date.now() }); say("Lernkarte gespeichert (IWi).", baseBtns()); } }, ...baseBtns().slice(0, 2)]);
+
+  /* Berichtsheft-Eintrag */
+  const note = q.match(/^(eintrag|notiz|merken|berichtsheft)\s*[:\-]\s*(.+)$/i);
+  if (note) { const k = when.date || todayKey(), d = state.days[k] = sanitizeDay(state.days[k]); d.entries.push({ id: uid(), text: note[2].trim().slice(0, 500) }); return say(`Fürs Berichtsheft gemerkt (${dayWord(k)}): ${note[2].trim()}`, [undoBtn(snap), openBtn("Berichtsheft", "/report")]); }
+
+  /* Auftrag */
+  if (/auftrag|mangel|defekt|kaputt|reparatur|undicht|verstopf|ausgefallen|tropf|piept|klemmt|leckt|schimmel|funktioniert nicht|geht nicht|kein warmwasser|wasserschaden|feucht/.test(n) && !ask) {
+    const ve = q.match(/\b(\d{5})\b/), prop = ve ? state.properties.find(p => p.ve === ve[1]) : null;
+    const name = (q.match(/\b(?:mieter(?:in)?|herr|frau)\s+([A-ZÄÖÜ][a-zäöüß-]+)/) || q.match(/\b([A-ZÄÖÜ][a-zäöüß]+)\b(?=\s+\d{5}|\s*$)/) || [])[1] || "";
+    let mangel = clean(q.replace(/\b\d{5}\b/, " ").replace(name ? new RegExp(`\\b(mieter(in)?|herr|frau)?\\s*${name}\\b`, "i") : /$^/, " "), /\bauftrag(e|s)?\b|\bmängelmeldung\b|\bmangel\b/gi);
+    mangel = mangel.replace(/(^|\s)(dringend|notfall|sofort|eilig)(?=\s|$)/gi, " ").replace(/\s+/g, " ").trim();
+    mangel = mangel ? mangel[0].toUpperCase() + mangel.slice(1) : "";
+    const pre = { mangel, gewerk: findGewerk(q), mieter: name, ...(prop ? { prop: propLabel(prop), wohnanlage: prop.name, firmaNr: ["1", "2", "11"].includes(prop.firmaNr) ? prop.firmaNr : "1" } : {}), dringend: /dringend|notfall|sofort|eilig/.test(n) };
+    startAuftrag(pre);
+    const run = state.flowRuns[state.flowRuns.length - 1];
+    return say(`Auftrag gestartet:\n${[mangel && "Mangel: " + mangel, pre.gewerk && "Gewerk: " + pre.gewerk, name && "Mieter: " + name, prop && `Liegenschaft: ${prop.ve} ${prop.name} (Firma ${prop.firmaNr})`, `Frist: ${fmtD(fristAuto(run.data))}${pre.dringend ? " (dringend)" : ""}`].filter(Boolean).join("\n")}\n\nDen Rest ergänzt du in der Aufgabe.`, [openBtn("Aufgabe öffnen", `/task/${run.id}`), undoBtn(snap)]);
   }
-  if (f && f.type === "order") return stepAnswer(q);
-  if (f && f.type === "list") {
-    const l = getList(f.listId), t = l && l.tasks.find(x => !x.completed && !x.skipped && !f.skip.has(x.id));
-    if (/stop|abbrech|ende/.test(n)) return stopFlow();
-    if (t && /erledigt|fertig|ok|ja|done/.test(n)) { setCompleted(l, t, true); return nextListStep(); }
-    if (t && /weiter|spater|uberspring|skip/.test(n)) { if (t.type === "optional") t.skipped = true; else f.skip.add(t.id); return nextListStep(); }
-    return say("Antworte mit „erledigt“, „später“ oder „stopp“.", chatBtns);
+
+  /* Noten */
+  if (/\bnote|noten|schnitt|durchschnitt/.test(n)) {
+    const num = when.rest.match(/\b([1-6](?:[,.]\d{1,2})?)\b/);
+    const sub = findSubject(q);
+    if (num && sub && !ask) {
+      const v = Number(num[1].replace(",", ".")), type = /schulaufgabe/.test(n) ? "Schulaufgabe" : /mundlich|referat/.test(n) ? "Mündlich / Referat" : /kurzarbeit/.test(n) ? "Kurzarbeit" : "Stegreifaufgabe / Test";
+      addGrade(sub, v, type, when.date || todayKey(), "");
+      const list = state.grades.filter(g => g.subject === sub);
+      return say(`Note ${String(v).replace(".", ",")} in ${sub} (${type}) eingetragen. Neuer Schnitt in ${sub}: ${fmtGrade(avg(list))}.`, [undoBtn(snap), openBtn("Noten", "/grades")]);
+    }
+    const subs = [...new Set(state.grades.map(g => g.subject))];
+    if (!subs.length) return say("Noch keine Noten eingetragen. Schreib z. B. „Note 2,3 in KSC Schulaufgabe“.", [openBtn("Noten", "/grades")]);
+    const rows = subs.map(s => [s, avg(state.grades.filter(g => g.subject === s))]);
+    return say(`${rows.map(([s, a]) => `• ${s}: ${fmtGrade(a)}`).join("\n")}\nGesamt: ${fmtGrade(rows.reduce((a, r) => a + r[1], 0) / rows.length)}`, [openBtn("Noten", "/grades")]);
   }
-  if (/hilfe|help|was kannst/.test(n)) return say(HELP, baseBtns());
-  if (/auftrag/.test(n)) {
-    const rest = q.replace(/.*auftrag\w*\s*(anlegen|erstellen|fur|für)?\s*/i, "");
-    const hits = rest.length > 2 ? propMatches(rest) : [];
-    return hits.length === 1 ? startOrder(hits[0]) : startOrder();
+
+  /* Klausuren und Prüfungen */
+  if (/klausur|prufung|schulaufgabe|stegreif|\bex\b|\btest\b|kurzarbeit/.test(n)) {
+    if (ask || !when.date) {
+      const ex = upcomingExams();
+      return say(ex.length ? "Anstehend:\n" + ex.slice(0, 8).map(e => `• ${e.title} – ${dayWord(e.date)} (${inDays(e.date)})`).join("\n") : "Keine Klausuren eingetragen. Schreib z. B. „Klausur IWi am 15.10.“", [openBtn("Stundenplan", "/school")]);
+    }
+    const sub = findSubject(q), kind = /prufung/.test(n) ? "Prüfung" : /schulaufgabe/.test(n) ? "Schulaufgabe" : "Klausur";
+    const topic = clean(when.rest, /\b(klausur|prüfung|pruefung|schulaufgabe|stegreifaufgabe|stegreif|ex|test|kurzarbeit)\b/gi).replace(new RegExp(`\\b${sub}\\b`), "").trim();
+    const title = `${kind}${sub ? " " + sub : ""}${topic ? " – " + topic : ""}`;
+    state.events.push(makeEvent({ title, date: when.date, from: when.from, to: when.to, allDay: !when.from, kind: "klausur", subject: sub, report: false }));
+    return say(`Eingetragen: ${title} am ${dayWord(when.date)} (${inDays(when.date)}).`, [undoBtn(snap), openBtn("Kalender", `/calendar/month/${when.date}`), { label: "Lernkarten dazu", run: () => { saveState(); go("/cards"); } }]);
   }
-  if (/checkliste|abarbeiten|aufgabe/.test(n)) return pickList();
-  if (/termin|heute|kalender/.test(n)) {
-    const evs = eventsOn(todayKey());
-    return say(evs.length ? "Heute:\n" + evs.map(e => `• ${e.from ? e.from + (e.to ? "–" + e.to : "") : "ganztägig"} ${e.title}`).join("\n") : "Heute stehen keine Termine im Kalender.", baseBtns());
+
+  /* Hausaufgaben */
+  if (/hausaufgabe|\bha\b|hausi/.test(n)) {
+    if (ask) { const open = state.homework.filter(h => !h.done).sort((a, b) => (a.due || "9").localeCompare(b.due || "9")); return say(open.length ? open.map(h => `• ${h.subject}: ${h.text}${h.due ? ` (bis ${dayWord(h.due)})` : ""}`).join("\n") : "Keine offenen Hausaufgaben.", [openBtn("Hausaufgaben", "/homework")]); }
+    const sub = findSubject(q) || "Sonstiges";
+    const textHw = clean(when.rest, /\b(hausaufgaben?|ha|hausi|bis)\b/gi).replace(new RegExp(`^${sub}\\b\\s*`), "").trim() || "Hausaufgabe";
+    const due = when.date || nextSchoolDay(dkey(addDays(new Date(), 1)), sub);
+    state.homework.push({ id: uid(), subject: sub, text: textHw, due, done: false, at: Date.now() });
+    return say(`Hausaufgabe ${sub}: ${textHw} – bis ${dayWord(due)}.`, [undoBtn(snap), openBtn("Hausaufgaben", "/homework")]);
   }
+
+  /* Lernkarten */
+  if (/lernkarte|karteikarte|vokabel|abfragen|lernen/.test(n)) {
+    const term = clean(q, /\b(lernkarten?|karteikarten?|vokabeln?|zu|über|uber|lernen|abfragen)\b/gi);
+    if (/abfragen|lernen/.test(n) && !term) return say(`${dueCards().length} Karten sind heute fällig.`, [openBtn("Jetzt lernen", "/cards/lernen")]);
+    ui.cardDraft = { term, subject: findSubject(q) || "IWi" };
+    return say(term ? `Ich habe „${term}“ vorbereitet. Drück auf der Seite „Mit KI erstellen“ und prüf die Karte.` : "Welcher Begriff? Schreib z. B. „Lernkarte Grundbuch“.", [openBtn("Lernkarten öffnen", "/cards")]);
+  }
+
+  /* Krank, Urlaub, Gleittag */
+  if (/krank|urlaub|gleittag|frei nehm|frei am/.test(n) && !ask) {
+    const status = /krank/.test(n) ? "krank" : /urlaub/.test(n) ? "urlaub" : "frei";
+    const days = setDayStatus(when.date || todayKey(), when.date2 || when.date || todayKey(), status);
+    if (!days.length) return say("Das sind keine Arbeitstage (Wochenende oder Feiertag).", baseBtns());
+    return say(`${DAY_STATUS[status]} eingetragen: ${days.length === 1 ? dayWord(days[0]) : `${fmtD(days[0])} bis ${fmtD(days[days.length - 1])} (${days.length} Arbeitstage)`}. Zählt ${status === "frei" ? "0" : "8"} Std. pro Tag.`, [undoBtn(snap), openBtn("Zeiterfassung", "/time")]);
+  }
+
+  /* Zeiterfassung */
+  if (/stundenkonto|uberstunden|minusstunden|plusstunden|saldo|gleitzeit|wie (viel|lange) (hab|habe) ich gearbeitet/.test(n)) {
+    const k = todayKey(), d = state.days[k];
+    return say(`Stundenkonto: ${fmtHM(saldo(startKey(), k), true)} Std.\nHeute: ${fmtHM(liveMins(d))} Std. gearbeitet.`, [openBtn("Zeiterfassung", "/time")]);
+  }
+  if (/einchecken|einstempeln|ich (bin|komme) (da|an)|arbeitsbeginn/.test(n)) return say("Einchecken?", [{ label: "Jetzt einchecken", run: () => { handleAction("t-in", document.body); say("Eingecheckt.", baseBtns()); } }]);
+  if (/auschecken|ausstempeln|feierabend|ich gehe/.test(n)) return say("Auschecken?", [{ label: "Jetzt auschecken", run: () => { handleAction("t-out", document.body); say("Ausgecheckt. Schönen Feierabend!", baseBtns()); } }]);
+
+  /* Stundenplan */
+  if (/stundenplan|unterricht|welche facher|welche stunden|wann (ist|hab ich|habe ich) schule/.test(n)) {
+    const k = when.date || todayKey(), ls = lessonsOf(k), isS = isSchoolDay(k);
+    const Day = w => w[0].toUpperCase() + w.slice(1);
+    if (!isS) { const nx = (() => { for (let d = addDays(pkey(k), 1), i = 0; i < 60; i++, d = addDays(d, 1)) if (isSchoolDay(dkey(d))) return dkey(d); return ""; })(); return say(`${Day(dayWord(k))} ist keine Schule.${nx ? ` Nächster Schultag: ${dayWord(nx)}.` : ""}`, [openBtn("Stundenplan", "/school")]); }
+    return say(`${Day(dayWord(k))} Berufsschule:\n${ls.length ? ls.map(l => `• ${l.from}${l.to ? "–" + l.to : ""} ${l.subject}${l.teacher ? " (" + l.teacher + ")" : ""}`).join("\n") : "Stundenplan noch leer."}`, [openBtn("Stundenplan", "/school")]);
+  }
+
+  /* Berichtsheft */
+  if (/berichtsheft|nachweis|bericht\b/.test(n)) {
+    const nr = Math.max(1, weekNo(todayKey())), r = state.reports[nr];
+    return say(`Woche ${nr} (${fmtD(weekRange(nr).from)} – ${fmtD(weekRange(nr).to)}): ${r ? (r.archived ? "im Archiv" : r.done ? "fertig" : "Entwurf gespeichert") : "noch nicht angelegt"}.${new Date().getDay() >= 5 || new Date().getDay() === 0 ? " Zeit, ihn fertig zu machen!" : ""}`, [openBtn("Berichtsheft öffnen", `/report/${nr}`)]);
+  }
+
+  /* Offene Aufgaben */
+  if (/aufgaben|to ?do|offen/.test(n) && ask) {
+    const open = state.flowRuns.filter(r => !r.doneAt);
+    return say(open.length ? open.map(r => `• ${r.title}${r.data.mangel ? ": " + r.data.mangel : ""}`).join("\n") : "Keine offenen Aufgaben.", [openBtn("Aufgaben", "/tasks")]);
+  }
+
+  /* Termine: abfragen oder anlegen */
+  const evWords = /termin|besichtigung|ubergabe|abnahme|meeting|besprechung|treffen|erinner|begehung|versammlung|arzt/;
+  if ((ask && /was (habe|hab) ich|heute|morgen|ubermorgen|woche|termin|ansteht|steht an|kalender|montag|dienstag|mittwoch|donnerstag|freitag|\d{1,2}\.\d{1,2}\./.test(n)) || (!ask && /^(heute|morgen|diese woche)\??$/.test(n))) {
+    if (/woche/.test(n)) {
+      const mon = monday(pkey(todayKey())), out = [];
+      for (let i = 0; i < 5; i++) { const k = dkey(addDays(mon, /nachste/.test(n) ? i + 7 : i)); out.push(`${WD[pkey(k).getDay()]}, ${fmtDs(k)}\n${eventsText(k)}`); }
+      return say(out.join("\n\n"), [openBtn("Kalender", "/calendar/week/" + dkey(mon))]);
+    }
+    const k = when.date || todayKey();
+    return say(`${dayWord(k)[0].toUpperCase() + dayWord(k).slice(1)}:\n${eventsText(k)}`, [openBtn("Kalender", `/calendar/day/${k}`)]);
+  }
+  if (evWords.test(n) && when.date && !ask) {
+    const title = clean(when.rest, /\btermin\b/gi) || "Termin";
+    const t = title[0].toUpperCase() + title.slice(1);
+    state.events.push(makeEvent({ title: t, date: when.date, from: when.from, to: when.to || (when.from ? hmAdd(when.from, 60) : ""), allDay: !when.from }));
+    return say(`Termin eingetragen: ${t} – ${dayWord(when.date)}${when.from ? `, ${when.from}${when.to ? "–" + when.to : ""} Uhr` : " (ganztägig)"}.`, [undoBtn(snap), openBtn("Kalender", `/calendar/day/${when.date}`)]);
+  }
+  if (evWords.test(n) && !when.date) return say("Wann? Schreib z. B. „Termin morgen 14 Uhr Besichtigung Hauptstr. 5“ oder „Übergabe am 12.10. um 9 Uhr“.", baseBtns());
+
+  /* Liegenschaften */
   const ve = q.match(/\b(\d{5})\b/);
   if (ve) {
     const hits = state.properties.filter(p => p.ve === ve[1]);
-    return say(hits.length ? hits.map(propInfo).join("\n\n") : `Die VE ${ve[1]} kenne ich nicht.`, hits.map(p => ({ label: `Auftrag für ${p.ve}`, run: () => startOrder(p) })));
+    return say(hits.length ? hits.map(propInfo).join("\n\n") : `Die VE ${ve[1]} kenne ich nicht.`, hits.map(p => ({ label: `Auftrag für ${p.ve}`, run: () => { startAuftrag({ prop: propLabel(p), wohnanlage: p.name, firmaNr: p.firmaNr }); saveState(); go(`/task/${state.flowRuns[state.flowRuns.length - 1].id}`); } })));
   }
   const sbs = [...new Set(state.properties.flatMap(p => p.sb.split("/")).filter(Boolean))];
   const tokens = q.split(/[^A-Za-zÄÖÜäöü]+/).filter(Boolean);
@@ -2389,9 +2640,11 @@ function answer(text) {
     return say(`${sb} betreut ${hits.length} Liegenschaften:\n` + hits.map(p => `• ${p.ve} ${p.name} (Firma ${p.firmaNr})`).join("\n"));
   }
   const hits = propMatches(q);
-  if (hits.length) return say(hits.slice(0, 8).map(p => `• ${p.ve} ${p.name} – Firma ${p.firmaNr}, ${p.sb}`).join("\n") + (hits.length > 8 ? `\n… und ${hits.length - 8} weitere` : ""), hits.slice(0, 4).map(p => ({ label: `Auftrag ${p.ve}`, run: () => startOrder(p) })));
-  say("Das habe ich nicht verstanden. " + HELP, baseBtns());
+  if (hits.length) return say(hits.slice(0, 8).map(p => `• ${p.ve} ${p.name} – Firma ${p.firmaNr}, ${p.sb}`).join("\n") + (hits.length > 8 ? `\n… und ${hits.length - 8} weitere` : ""));
+  if (gl) return say(`${gl[1]}\n${gl[2]}`, baseBtns());
+  say("Das habe ich nicht verstanden. Tipp: kurze Sätze mit einem Stichwort wie Termin, Klausur, Hausaufgabe, Note, Auftrag, krank oder Urlaub.\n\n" + HELP, baseBtns());
 }
+const hmAdd = (t, m) => { const x = mins(t) + m; return `${pad(Math.min(23, Math.floor(x / 60)))}:${pad(x % 60)}`; };
 function chatSend(text) {
   text = text.trim();
   if (!text) return;
@@ -2402,9 +2655,9 @@ function chatSend(text) {
 }
 function renderAssistant() {
   if (!state.chat.length) say("Hallo! " + HELP, baseBtns());
-  else if (!chatBtns.length && !ui.flow) chatBtns = baseBtns();
+  else if (!chatBtns.length) chatBtns = baseBtns();
   return `
-    <div class="page-head"><div><p class="eyebrow">Arbeit · Assistent</p><h1>Frag <span class="hl">einfach.</span></h1><p class="lede">Führt dich Schritt für Schritt durch Aufträge und Aufgaben. Auch ohne Internet.</p></div>
+    <div class="page-head"><div><p class="eyebrow">Arbeit · Assistent</p><h1>Frag <span class="hl">einfach.</span></h1><p class="lede">Versteht Datum, Uhrzeit, Fächer und Gewerke. Trägt Termine, Klausuren, Hausaufgaben, Noten und Krankheit direkt ein. Ohne KI, auch offline.</p></div>
       <div class="head-actions"><button type="button" class="btn" data-act="chat-clear">${icon("trash", 16)} Verlauf leeren</button></div></div>
     <div class="chat">
       <div class="chat-log" id="chatLog" aria-live="polite">
@@ -2412,7 +2665,7 @@ function renderAssistant() {
         ${chatBtns.length ? `<div class="msg-btns">${chatBtns.map((b, i) => `<button type="button" class="btn" data-act="chat-btn" data-value="${i}">${esc(b.label)}</button>`).join("")}</div>` : ""}
       </div>
       <form class="chat-in" id="chatForm" autocomplete="off">
-        <input class="input" id="chatInput" placeholder="${ui.flow && ui.flow.type === "order" && !ui.flow.prop ? "Straße, Name oder VE …" : "Nachricht schreiben …"}" aria-label="Nachricht an den Assistenten" value="${esc(ui.chatInput)}">
+        <input class="input" id="chatInput" placeholder="z. B. Termin morgen 14 Uhr Besichtigung" aria-label="Nachricht an den Assistenten" value="${esc(ui.chatInput)}">
         <button type="submit" class="btn primary" aria-label="Senden">${icon("send", 17)}</button>
       </form>
     </div>`;
@@ -2423,7 +2676,7 @@ function renderAssistant() {
    ========================================================== */
 const GEWERKE = ["Sanitär", "Heizung", "Elektro", "Schreiner", "Glaser", "Maler", "Dach / Spengler", "Fliesen", "Rollladen", "Schlüsseldienst", "Rohrreinigung", "Aufzug", "Rauchmelder", "Schädlingsbekämpfung", "Garten", "Reinigung", "Hausmeister", "Sonstiges"];
 const AUFTRAG_VORLAGEN = ["Auftrag Mietvertrag", "Mängelrüge Mietvertrag", "Auftrag Wohneinheit", "Mängelrüge Wohneinheit"];
-const FIRMEN = { 1: "Gregor Deurer GmbH & Co. KG", 2: "Dr. Markus Deurer, Vermietungen", 11: "Sonderbilanz Gregor Deurer GmbH & Co. KG" };
+const firmaName = nr => (state.properties.find(p => p.firmaNr === String(nr)) || {}).firma || "";
 const BUILTIN_FLOWS = [{ id: "auftrag", title: "Auftrag an Handwerker erteilen", desc: "Mängelmeldung aus E-Mail oder casavi – Immotion, Word, Ablage, Versand." }];
 const HW_MAIL = "Sehr geehrte Damen und Herren,\n\nanbei übersende ich Ihnen einen Auftrag.\n\nBei Rückfragen stehen wir Ihnen gerne zur Verfügung.";
 /* Nächster Werktag (ohne Wochenende und Feiertage) */
@@ -2450,7 +2703,7 @@ function auftragSteps(d) {
   const S = (id, sec, text, copy = "", copyLabel = "") => ({ id, sec, text, copy, copyLabel });
   return [
     S("in1", "Eingang", mail ? "E-Mail (CC) lesen: Name, Adresse und Problem des Mieters in die Angaben oben übernehmen" : "casavi-Vorgang öffnen (du wurdest markiert): Name, Adresse und Problem in die Angaben oben übernehmen"),
-    S("im1", "Immotion", `Immotion öffnen und Firma ${a.firmaNr} wählen (${FIRMEN[a.firmaNr] || ""})`),
+    S("im1", "Immotion", `Immotion öffnen und Firma ${a.firmaNr} wählen${firmaName(a.firmaNr) ? ` (${firmaName(a.firmaNr)})` : ""}`),
     S("im2", "Immotion", "Unten rechts „Alle Datensätze laden“"),
     S("im3", "Immotion", `Bei „Suchname“ den Nachnamen eingeben: ${d.mieter || "(Nachname)"}`, d.mieter || "", "Name"),
     S("im4", "Immotion", `Richtige Wohnung prüfen${d.wohnung ? ` (${d.wohnung})` : ""} und Mieter doppelklicken`),
@@ -2485,11 +2738,13 @@ function runSteps(run) {
   const f = flowOf(run);
   return f ? f.steps.map(x => ({ id: x.id, sec: "", text: x.text, copy: x.copy, copyLabel: "Text" })) : [];
 }
-function startFlow(flowId) {
+function startFlow(flowId, nav = true) {
   const f = BUILTIN_FLOWS.find(x => x.id === flowId) || state.flows.find(x => x.id === flowId);
   if (!f) return;
   const run = { id: uid(), flowId, title: f.title, startedAt: Date.now(), doneAt: null, data: flowId === "auftrag" ? { quelle: "E-Mail", betrifft: "Mieter", firmaNr: "1", budget: "Planmäßige Instandhaltung", vorlage: AUFTRAG_VORLAGEN[0], datum: todayKey(), anrede: "", termin: true } : {}, checks: {} };
-  state.flowRuns.push(run); saveState(); go(`/task/${run.id}`);
+  state.flowRuns.push(run); saveState();
+  if (nav) go(`/task/${run.id}`);
+  return run;
 }
 function renderTasks() {
   const open = state.flowRuns.filter(r => !r.doneAt).sort((a, b) => b.startedAt - a.startedAt);
@@ -2768,7 +3023,7 @@ function renderSettings() {
 /* ==========================================================
    Rendern
    ========================================================== */
-const TITLES = { work: "Arbeit", time: "Zeiterfassung", school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", tasks: "Aufgaben", task: "Aufgabe", report: "Berichtsheft", settings: "Einstellungen" };
+const TITLES = { work: "Arbeit", time: "Zeiterfassung", school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", tasks: "Aufgaben", task: "Aufgabe", grades: "Noten", cards: "Lernkarten", report: "Berichtsheft", settings: "Einstellungen" };
 function focusKey(el) { const d = el.dataset || {}; return [el.id, d.act, d.task, d.list, d.value, d.date, el.getAttribute("name"), el.getAttribute("href")].join("|"); }
 function findByKey(key) {
   if (!key || /^\|+$/.test(key)) return null;
@@ -2791,6 +3046,8 @@ function renderPage(route) {
     case "school": return renderTimetable();
     case "work": return renderWork();
     case "homework": return renderHomework();
+    case "grades": return renderGrades();
+    case "cards": return renderCards(route);
     case "time": return renderTime(route);
     case "settings": return renderSettings();
     default: return renderOverview();
@@ -3021,12 +3278,14 @@ function saveTaskForm(form) {
 
 /* ---------- Termin ---------- */
 function openEventModal(evId, preset = {}) {
-  const e = evId ? getEvent(evId) : makeEvent({ date: preset.date || todayKey(), propId: preset.propId || "", from: "09:00", to: "10:00", allDay: false });
+  const e = evId ? getEvent(evId) : makeEvent(preset.kind === "klausur" ? { date: preset.date || todayKey(), kind: "klausur", allDay: true, report: false } : { date: preset.date || todayKey(), propId: preset.propId || "", from: "09:00", to: "10:00", allDay: false });
   if (!e) return;
   openDialog({
-    title: evId ? (e.kind === "schule" ? "Berufsschule bearbeiten" : "Termin bearbeiten") : "Neuer Termin",
+    title: evId ? (e.kind === "schule" ? "Berufsschule bearbeiten" : e.kind === "klausur" ? "Klausur bearbeiten" : "Termin bearbeiten") : preset.kind === "klausur" ? "Klausur / Prüfung eintragen" : "Neuer Termin",
     body: `
       <form id="eventForm" class="form" novalidate data-id="${evId || ""}">
+        ${e.kind === "schule" ? "" : `<div class="field"><label for="eKind">Art</label><select class="select" id="eKind"><option value="termin" ${e.kind === "termin" ? "selected" : ""}>Termin</option><option value="klausur" ${e.kind === "klausur" ? "selected" : ""}>Klausur / Prüfung</option></select></div>
+        <div class="field"><label for="eSubject">Fach <span class="hint-text">bei Klausuren</span></label><select class="select" id="eSubject"><option value="">–</option>${[...new Set([...subjects(), e.subject].filter(Boolean))].map(x => `<option ${x === e.subject ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>`}
         <div class="field full"><label for="eTitle">Titel</label><input class="input" id="eTitle" maxlength="200" value="${esc(e.title)}" placeholder="z. B. Wohnungsübergabe"><p class="hint-text err" id="eTitleErr" hidden>Bitte gib einen Titel ein.</p></div>
         <div class="field"><label for="eDate">Datum</label><input class="input" id="eDate" type="date" value="${esc(e.date)}"></div>
         <div class="field"><label for="eRepeat">Wiederholung</label><select class="select" id="eRepeat">${EV_REPEATS.map(r => `<option value="${r}" ${e.repeat === r ? "selected" : ""}>${r === "keine" ? "Keine" : REPEAT_LABEL[r]}</option>`).join("")}</select></div>
@@ -3042,11 +3301,14 @@ function openEventModal(evId, preset = {}) {
   });
 }
 function saveEventForm(form) {
+  const kind = $("#eKind") ? $("#eKind").value : "", subject = $("#eSubject") ? $("#eSubject").value : "";
+  if (kind === "klausur" && !$("#eTitle").value.trim()) $("#eTitle").value = `Klausur${subject ? " " + subject : ""}`;
   const title = $("#eTitle").value.trim(), date = keyOr($("#eDate").value);
   if (!title || !date) { $("#eTitle").setAttribute("aria-invalid", "true"); $("#eTitleErr").hidden = false; $("#eTitle").focus(); return; }
   const allDay = $("#eAll").checked, from = allDay ? "" : timeOr($("#eFrom").value), to = allDay ? "" : timeOr($("#eTo").value);
   const data = { title, date, allDay: allDay || !from, from, to: to > from ? to : "", repeat: $("#eRepeat").value, place: $("#ePlace").value.trim(), propId: propFromInput($("#eProp").value), note: $("#eNote").value.trim() };
   if ($("#eReport")) data.report = $("#eReport").checked;
+  if (kind) { data.kind = kind; data.subject = subject; if (kind === "klausur") data.report = false; }
   const id = form.dataset.id;
   if (id) Object.assign(getEvent(id), data); else state.events.push(makeEvent(data));
   saveState(); closeDialog(); render(); toast(id ? "Termin gespeichert." : `Termin am ${fmtD(date)} angelegt.`);
@@ -3297,7 +3559,20 @@ async function handleAction(act, el) {
     case "open-list": go(`/list/${listId}`); break;
     case "goto": closeDialog(); go(val); break;
     case "quick": openQuick(); break;
-    case "quick-order": closeDialog(); startOrder(); saveState(); go("/assistant"); break;
+    case "quick-order": closeDialog(); startFlow("auftrag"); break;
+    case "new-exam": closeDialog(); openEventModal(null, { kind: "klausur", date: todayKey() }); break;
+    case "grade-del": { const snap = snapshot(); state.grades = state.grades.filter(g => g.id !== val); saveState(); render(); toastUndo("Note gelöscht.", snap); break; }
+    case "card-sub": ui.cardSub = val; render(); break;
+    case "card-show": if (ui.learn) { ui.learn.show = true; render(); } break;
+    case "card-right": case "card-wrong": {
+      const L = ui.learn, c = L && state.cards.find(x => x.id === L.queue[0]);
+      if (!c) break;
+      L.queue.shift(); L.show = false;
+      if (act === "card-right") { c.box = Math.min(5, c.box + 1); c.due = dkey(addDays(pkey(todayKey()), BOX_DAYS[c.box])); L.right++; }
+      else { c.box = 1; c.due = todayKey(); L.queue.push(c.id); L.wrong++; }
+      saveState(); render(); break;
+    }
+    case "card-del": { const snap = snapshot(); state.cards = state.cards.filter(c => c.id !== val); saveState(); render(); toastUndo("Karte gelöscht.", snap); break; }
     case "sync-signup": signIn(true); break;
     case "sync-logout": signOut(); break;
     case "sync-now": sync.dirty ? await pushState() : await pullState(); render(); toast(syncLabel()); break;
@@ -3418,13 +3693,13 @@ async function handleAction(act, el) {
     /* Liegenschaften */
     case "new-prop": openPropModal(); break;
     case "edit-prop": openPropModal(val); break;
-    case "order-for": { const p = getProp(val); if (p) { startOrder(p); saveState(); go("/assistant"); } break; }
+    case "order-for": { const p = getProp(val); if (p) { const r = startAuftrag({ prop: propLabel(p), wohnanlage: p.name, firmaNr: ["1", "2", "11"].includes(p.firmaNr) ? p.firmaNr : "1" }); go(`/task/${r.id}`); } break; }
     case "copy-order": { const o = state.orders.find(x => x.id === val); if (o) copyText(o.summary); break; }
     case "import-csv": $("#csvFile")?.click(); break;
 
     /* Assistent */
     case "chat-btn": { const b = chatBtns[Number(val)]; if (b) { b.run(); saveState(); render(); setTimeout(() => $("#chatInput")?.focus(), 0); } break; }
-    case "chat-clear": state.chat = []; ui.flow = null; chatBtns = []; saveState(); render(); break;
+    case "chat-clear": state.chat = []; chatBtns = []; saveState(); render(); break;
 
     /* Berichtsheft */
     case "rep-save": saveReport(); render(); toast("Bericht gespeichert."); break;
@@ -3514,7 +3789,7 @@ async function handleAction(act, el) {
     case "reset-all": {
       if (!await confirmDialog({ title: "Alles zurücksetzen?", text: "Alle Checklisten, Termine, Aufträge, Berichte und Einstellungen werden gelöscht. Liegenschaften und Berufsschultage werden neu eingetragen. Direkt danach noch rückgängig machbar.", confirm: "Zurücksetzen", danger: true })) break;
       const snap = snapshot();
-      state = seedState(); ui.flow = null; chatBtns = [];
+      state = seedState(); chatBtns = [];
       saveState(); go("/"); toastUndo("Alles zurückgesetzt.", snap);
       break;
     }
@@ -3659,6 +3934,24 @@ document.addEventListener("submit", e => {
     });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
+  } else if (f.id === "gradeForm") {
+    const sub = $("#gSub").value.trim(), v = Number($("#gVal").value.replace(",", "."));
+    if (!sub || !(v >= 1 && v <= 6)) { toast("Bitte Fach und eine Note zwischen 1 und 6 eingeben."); return; }
+    ui.gradeSub = sub; addGrade(sub, v, $("#gType").value, keyOr($("#gDate").value), $("#gNote").value.trim());
+    saveState(); render(); toast(`Note ${String(v).replace(".", ",")} in ${sub} eingetragen.`);
+  } else if (f.id === "cardAiForm") {
+    const term = $("#caTerm").value.trim(), subject = $("#caSub").value.trim() || "Allgemein";
+    if (!term) { $("#caTerm").focus(); return; }
+    ui.cardDraft = { term, subject }; ui.cardBusy = true; render();
+    aiCard(term, subject).then(c => { ui.cardDraft = { term, subject, front: c.front || "", back: c.back || "" }; toast("Karte erstellt. Bitte prüfen und speichern."); })
+      .catch(e => toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }))
+      .finally(() => { ui.cardBusy = false; render(); });
+  } else if (f.id === "cardForm") {
+    const front = $("#cFront").value.trim();
+    if (!front) { $("#cFront").focus(); return; }
+    const subject = ($("#caSub") && $("#caSub").value.trim()) || "Allgemein";
+    state.cards.push({ id: uid(), subject, front, back: $("#cBack").value.trim(), box: 1, due: todayKey(), at: Date.now() });
+    ui.cardDraft = { subject }; saveState(); render(); toast("Lernkarte gespeichert.");
   } else if (f.id === "flowForm") {
     const title = $("#flTitle").value.trim();
     if (!title) return;
@@ -3853,7 +4146,8 @@ function paletteItems(q) {
   const hit = text => { const h = norm(text); return words.every(w => h.includes(w)); };
   const cmds = [
     ["Neuer Termin", "plus", () => openEventModal(null, {})],
-    ["Auftrag anlegen (Assistent)", "chat", () => { startOrder(); saveState(); go("/assistant"); }],
+    ["Auftrag an Handwerker starten", "clipboard", () => startFlow("auftrag")],
+    ["Klausur eintragen", "cal", () => openEventModal(null, { kind: "klausur", date: todayKey() })],
     ["Zeiterfassung öffnen", "clock", () => go("/time")],
     ["Berichtsheft dieser Woche", "book", () => go("/report")],
     ["Neue Checkliste", "plus", () => openListModal()],
@@ -4000,7 +4294,7 @@ function applyRemote(row) {
 function mergeStates(remote, local) {
   const byId = (r, l) => { r = arr(r); const ids = new Set(r.map(x => x && x.id)); return [...r, ...arr(l).filter(x => x && !ids.has(x.id))]; };
   const m = { ...remote };
-  ["checklists", "history", "properties", "events", "orders", "logs", "homework", "flows", "flowRuns"].forEach(k => { m[k] = byId(remote[k], local[k]); });
+  ["checklists", "history", "properties", "events", "orders", "logs", "homework", "flows", "flowRuns", "grades", "cards"].forEach(k => { m[k] = byId(remote[k], local[k]); });
   ["days", "reports"].forEach(k => { m[k] = { ...obj(local[k]), ...obj(remote[k]) }; });
   return m;
 }
