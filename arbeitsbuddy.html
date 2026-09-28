@@ -695,7 +695,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.6";
+const APP_VERSION = "2026-09-28.7";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1023,7 +1023,7 @@ function sanitizeState(raw) {
     confirmDelete: typeof rs.confirmDelete === "boolean" ? rs.confirmDelete : true,
     autoRepeat: typeof rs.autoRepeat === "boolean" ? rs.autoRepeat : true,
     sort: SORTS.includes(rs.sort) ? rs.sort : "updated",
-    profile: { name: str(pr.name ?? dp.name, 80), firma: str(pr.firma ?? dp.firma, 120), abteilung: str(pr.abteilung ?? dp.abteilung, 80), start: keyOr(pr.start) || todayKey() },
+    profile: { name: str(pr.name ?? dp.name, 80), firma: str(pr.firma ?? dp.firma, 120), abteilung: str(pr.abteilung ?? dp.abteilung, 80), software: str(pr.software, 60), start: keyOr(pr.start) || todayKey() },
     orderSteps: arr(rs.orderSteps).map(x => str(x, 200)).filter(Boolean).slice(0, 20),
     school: sanitizeSchool(rs.school)
   };
@@ -1298,6 +1298,75 @@ function reportFor(n) {
   const saved = state.reports[n];
   if (saved) return { ...saved, saved: true };
   return { ...collectWeek(n), vorgangTitel: "", vorgang: "", done: false, saved: false };
+}
+/* Vorschläge für den Nachweis (Immobilienkaufleute, Hausverwaltung, erstes Ausbildungsjahr); {sw} = Verwaltungssoftware */
+const GEN = {
+  betrieb: [
+    "Bearbeitung eingehender Mängelmeldungen von Mietern", "Erstellung von Instandhaltungsaufträgen an Handwerksbetriebe in {sw}",
+    "Versand von Aufträgen per E-Mail an Auftragnehmer und betroffene Mieter", "Beantwortung von Rückfragen der Handwerker zu Terminen und Zugang",
+    "Terminabstimmung zwischen Handwerkern und Mietern per E-Mail und Telefon", "Recherche von Objekt- und Mieterdaten in {sw}",
+    "Ablage von Auftragsbestätigungen und Schriftverkehr in der Objektakte", "Bearbeitung von Posteingang und Postausgang",
+    "Nachverfolgung offener Aufträge und Erinnerung bei fehlender Rückmeldung", "Abgleich von Handwerkerrechnungen mit den erteilten Aufträgen",
+    "Weiterleitung von Rechnungen zur sachlichen Prüfung und Freigabe", "Pflege von Kontaktdaten der Handwerksbetriebe in {sw}",
+    "Teilnahme an einer Wohnungsbesichtigung mit dem zuständigen Sachbearbeiter", "Dokumentation einer Besichtigung mit Fotos und Notizen",
+    "Teilnahme an einer Wohnungsabnahme und Mithilfe beim Übergabeprotokoll", "Vorbereitung von Unterlagen für eine Wohnungsübergabe",
+    "Kontrolle des Inventars einer möblierten Wohnung anhand der Inventarliste", "Weiterleitung von Mieteranfragen an die zuständigen Sachbearbeiter",
+    "Telefonische Annahme von Mieteranliegen und Weitergabe als Notiz", "Beantwortung einfacher Mieteranfragen per E-Mail",
+    "Einholen von Kostenvoranschlägen bei Handwerksbetrieben", "Vergleich von Angeboten verschiedener Handwerksbetriebe",
+    "Erstellung von Anschreiben an Mieter nach Vorlage", "Aushang von Mieterinformationen im Treppenhaus vorbereiten",
+    "Information der Mieter über anstehende Wartungs- und Reparaturarbeiten", "Pflege von Wiedervorlagen und Fristen im Kalender",
+    "Scannen und digitale Ablage von Dokumenten in der Objektakte", "Recherche in Mietverträgen und Hausordnungen",
+    "Erfassung von Zählerständen und Weitergabe an die Buchhaltung", "Mithilfe bei der Vorbereitung von Eigentümerversammlungen",
+    "Prüfung von Schadensmeldungen und Weitergabe an die Gebäudeversicherung", "Beauftragung von Schlüsseldienst und Schlüsselnachbestellungen",
+    "Abstimmung mit Hausmeistern zu Objektbegehungen und kleinen Reparaturen", "Pflege der Handwerkerliste mit Gewerken und Ansprechpartnern",
+    "Einarbeitung in weitere Funktionen von {sw}", "Kontrolle von Wartungsverträgen (Heizung, Aufzug, Rauchmelder) auf Fälligkeit"
+  ],
+  vorgang: [
+    ["Instandhaltungsauftrag nach Mängelmeldung erstellen", ["Mängelmeldung aufnehmen und auf Vollständigkeit prüfen", "Liegenschaft und Wohnung in {sw} aufrufen", "Passenden Handwerksbetrieb auswählen", "Auftrag mit Mangelbeschreibung und Kontaktdaten des Mieters anlegen", "Auftrag per E-Mail versenden und in der Objektakte ablegen"]],
+    ["Wohnungsbesichtigung vorbereiten und nachbereiten", ["Termin mit Sachbearbeiter und Mieter abstimmen", "Objektdaten, Grundriss und Schlüssel bereitlegen", "Wohnung begehen, Zustand und Mängel notieren, Fotos machen", "Notizen und Fotos in der Objektakte ablegen", "Für festgestellte Mängel Aufträge anlegen"]],
+    ["Handwerkerrechnung prüfen", ["Rechnung dem erteilten Auftrag zuordnen", "Leistungen und Beträge mit Auftrag und Angebot vergleichen", "Unstimmigkeiten mit dem Handwerker klären", "Rechnung an den Sachbearbeiter zur Freigabe weiterleiten", "Vorgang in {sw} und in der Objektakte ablegen"]],
+    ["Termin zwischen Handwerker und Mieter koordinieren", ["Terminvorschläge beim Handwerker erfragen", "Mieter kontaktieren und passenden Termin abstimmen", "Termin dem Handwerker per E-Mail bestätigen", "Zugang zur Wohnung und Schlüsselübergabe klären", "Termin in der Wiedervorlage vermerken"]],
+    ["Inventurkontrolle einer möblierten Wohnung", ["Inventarliste und Protokoll ausdrucken", "Geschirr, Besteck und Ausstattung zählen", "Bestand mit der Inventarliste abgleichen", "Fehlende oder beschädigte Gegenstände notieren", "Protokoll unterschreiben lassen und ablegen"]],
+    ["Kostenvoranschläge einholen und vergleichen", ["Leistung genau beschreiben", "Anfrage an mehrere Handwerksbetriebe senden", "Eingegangene Angebote in einer Übersicht gegenüberstellen", "Ergebnis mit dem Sachbearbeiter besprechen", "Auftrag an den gewählten Betrieb vorbereiten"]],
+    ["Mieteranfrage per E-Mail beantworten", ["E-Mail lesen und Anliegen erfassen", "Mieter und Wohnung in {sw} aufrufen", "Nötige Informationen im Mietvertrag nachschlagen", "Antwort höflich und nach DIN 5008 formulieren", "E-Mail versenden und in der Objektakte ablegen"]],
+    ["Schriftstück scannen und digital ablegen", ["Dokument auf Vollständigkeit prüfen", "Dokument scannen und als PDF speichern", "Datei nach Ablageregeln benennen", "In der richtigen Objektakte ablegen", "Papieroriginal archivieren oder vernichten"]],
+    ["Wohnungsübergabe mit Protokoll", ["Übergabeprotokoll und Schlüssel vorbereiten", "Räume gemeinsam begehen und Zustand festhalten", "Zählerstände ablesen und eintragen", "Schlüssel übergeben und Anzahl protokollieren", "Protokoll unterschreiben lassen und ablegen"]],
+    ["Mieterinformation für Wartungsarbeiten erstellen", ["Termin und Art der Arbeiten mit der Firma klären", "Aushang nach Vorlage erstellen", "Text auf Vollständigkeit und Rechtschreibung prüfen", "Aushang ausdrucken bzw. per E-Mail an Mieter senden", "Kopie in der Objektakte ablegen"]]
+  ],
+  schule: {
+    IWi: ["Berufsbild Immobilienkaufmann/-frau und Aufgaben der Branche", "Duales System, Rechte und Pflichten aus dem Ausbildungsvertrag", "Aufbau und Organisation von Immobilienunternehmen", "Wohnungsmarkt und Arten von Wohnungsunternehmen", "Rechts- und Geschäftsfähigkeit", "Zustandekommen von Verträgen", "Grundlagen des Mietrechts im BGB", "Inhalte eines Wohnraummietvertrags", "Pflichten von Mieter und Vermieter", "Mängel der Mietsache und Mietminderung"],
+    KSC: ["Kaufmännisches Rechnen: Dreisatz", "Prozentrechnung", "Zinsrechnung", "Inventur, Inventar und Bilanz", "Bestandskonten und Buchungssätze", "Aufgaben der Buchführung"],
+    D: ["Geschäftsbriefe und E-Mails nach DIN 5008", "Protokoll und Bericht schreiben", "Kommunikation im Beruf", "Telefonieren im Büro", "Zusammenfassen von Sachtexten"],
+    E: ["Introducing yourself and your company", "Describing jobs and departments", "Telephoning and taking messages", "Writing short business e-mails", "Describing a flat or house"],
+    PuG: ["Jugend- und Auszubildendenvertretung, Mitbestimmung", "Sozialversicherung: Zweige und Beiträge", "Arbeitsvertrag und Arbeitsschutz", "Grundrechte im Grundgesetz", "Demokratie und Wahlen"]
+  }
+};
+function suggestWeek(n) {
+  const fresh = collectWeek(n), w = weekRange(n), sw = state.settings.profile.software || "der Verwaltungssoftware";
+  const used = new Set();
+  Object.entries(state.reports).forEach(([k, r]) => { if (Number(k) !== n) [r.betrieb, r.schule, r.vorgangTitel].forEach(t => bullet(t).forEach(l => used.add(norm(l.replace(/^[-–•>\s]+/, ""))))); });
+  const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const fresh1st = list => [...shuffle(list.filter(t => !used.has(norm(t)))), ...shuffle(list.filter(t => used.has(norm(t))))];
+  const fill = t => t.replace(/\{sw\}/g, sw);
+  /* Echte Einträge der Woche zuerst, dann auffüllen bis 7 Stichpunkte */
+  const own = bullet(fresh.betrieb).map(l => l.replace(/^[-–•>\s]+/, ""));
+  const betrieb = [...own, ...fresh1st(GEN.betrieb.map(fill)).filter(t => !own.some(o => norm(o) === norm(t)))].slice(0, Math.max(7, own.length));
+  const [vt, vs] = fresh1st(GEN.vorgang.map(v => v[0])).map(t => GEN.vorgang.find(v => v[0] === t))[0];
+  const sm = w.days.reduce((s, k) => s + schoolMins(k), 0);
+  let schule = fresh.schule;
+  if (sm) {
+    const subs = subjects().filter(s => GEN.schule[s]);
+    const keys = subs.length ? subs : Object.keys(GEN.schule);
+    const picks = keys.map(s => fresh1st(GEN.schule[s].map(t => `${s}: ${t}`)));
+    const out = [];
+    for (let i = 0; out.length < 5 && i < 5; i++) picks.forEach(p => { if (out.length < 5 && p[i]) out.push(p[i]); });
+    schule = [...bullet(fresh.schule).filter(l => !/^-?(Berufsschule erst|Kein)/.test(l)).map(l => l.replace(/^[-–•>\s]+/, "")), ...out].slice(0, 6).map(t => "-" + t).join("\n");
+  }
+  const workDays = w.days.filter(k => !holiday(k) && !schoolMins(k) && !(state.days[k] && ["urlaub", "krank", "frei"].includes(state.days[k].status))).length;
+  return {
+    betrieb: betrieb.map(t => "-" + t).join("\n"), vorgangTitel: fill(vt), vorgang: vs.map(fill).join("\n"), schule,
+    hBetrieb: fresh.hBetrieb || (workDays ? String(workDays * 8) : ""), hSchule: fresh.hSchule
+  };
 }
 const parseH = v => Number(String(v || "").replace(",", ".")) || 0;
 const sumH = r => { const t = parseH(r.hBetrieb) + parseH(r.hSchule); return t ? String(Math.round(t * 100) / 100).replace(".", ",") : ""; };
@@ -2298,6 +2367,7 @@ function renderReport(route) {
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="rep-save">Speichern</button>
             <button type="button" class="btn" data-act="rep-done">${r.done ? "Wieder als Entwurf" : "Als fertig markieren"}</button>
+            <button type="button" class="btn" data-act="rep-gen">${icon("bolt", 15)} Vorschlag erzeugen</button>
             <button type="button" class="btn" data-act="rep-regen">${icon("reset", 15)} Neu aus Einträgen</button>
             ${r.saved ? `<button type="button" class="btn danger" data-act="rep-delete">Löschen</button>` : ""}
           </div>
@@ -2341,6 +2411,7 @@ function renderSettings() {
           <div class="field"><label for="pStart">Ausbildungsbeginn</label><input class="input" id="pStart" type="date" value="${esc(p.start)}"></div>
           <div class="field"><label for="pFirma">Firma</label><input class="input" id="pFirma" value="${esc(p.firma)}"></div>
           <div class="field"><label for="pAbt">Ausbildungsabteilung</label><input class="input" id="pAbt" value="${esc(p.abteilung)}"></div>
+          <div class="field"><label for="pSw">Verwaltungssoftware <span class="hint-text">– für Vorschläge</span></label><input class="input" id="pSw" value="${esc(p.software)}" placeholder="z. B. Immotion"></div>
         </div>
         <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button></div>
       </form>
@@ -2944,6 +3015,13 @@ async function handleAction(act, el) {
     case "rep-save": saveReport(); render(); toast("Bericht gespeichert."); break;
     case "rep-done": saveReport(!ui.rep.done); render(); toast(ui.rep.done ? "Als fertig markiert." : "Wieder als Entwurf."); break;
     case "rep-print": saveReport(); printReport(); break;
+    case "rep-gen": {
+      readRepForm();
+      Object.assign(ui.rep, suggestWeek(ui.rep.n));
+      ui.rep.dirty = true;
+      render(); toast("Vorschlag erstellt. Bitte prüfen, anpassen und speichern.", { ms: 6000 });
+      break;
+    }
     case "rep-regen": {
       const n = ui.rep.n, fresh = collectWeek(n);
       readRepForm();
@@ -3114,7 +3192,7 @@ document.addEventListener("submit", e => {
   else if (f.id === "chatForm") chatSend($("#chatInput").value);
   else if (f.id === "profileForm") {
     const p = state.settings.profile;
-    Object.assign(p, { name: $("#pName").value.trim(), firma: $("#pFirma").value.trim(), abteilung: $("#pAbt").value.trim(), start: keyOr($("#pStart").value) || p.start });
+    Object.assign(p, { name: $("#pName").value.trim(), firma: $("#pFirma").value.trim(), abteilung: $("#pAbt").value.trim(), software: $("#pSw").value.trim(), start: keyOr($("#pStart").value) || p.start });
     saveState(); render(); toast("Gespeichert.");
   } else if (f.id === "schoolForm") {
     const fix = x => x ? x.replace(".", ":").padStart(5, "0") : "";
