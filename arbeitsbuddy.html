@@ -569,6 +569,21 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .auth-form .btn { width: 100%; justify-content: center; }
 .auth .hint-text { margin-top: 14px; }
 .table-wrap { overflow-x: auto; }
+.steps { display: grid; gap: 6px; }
+.step-sec { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; }
+.step-sec:first-child { margin-top: 0; }
+.step { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); transition: background-color .15s, border-color .15s; }
+.step.on { background: var(--accent-soft); border-color: transparent; }
+.step.on .txt { color: var(--muted); text-decoration: line-through; }
+.step-check { display: flex; align-items: flex-start; gap: 10px; background: none; border: 0; padding: 2px 0; text-align: left; font: inherit; color: inherit; cursor: pointer; min-width: 0; }
+.step-check .box { flex: none; width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line-strong); display: grid; place-items: center; color: var(--accent-ink); }
+.step.on .box { background: var(--accent-2); border-color: var(--accent-2); }
+.step-check .num { flex: none; font-size: 12px; color: var(--muted); min-width: 18px; padding-top: 3px; }
+.step-check .txt { overflow-wrap: anywhere; }
+.step-copy { grid-column: 1 / -1; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-family: inherit; font-size: 13px; line-height: 1.5; white-space: pre-wrap; color: var(--muted); }
+.run-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; position: sticky; top: 0; z-index: 5; padding: 8px 0; background: var(--bg); }
+.run-bar .bar { flex: 1; }
+.check-line { display: flex; gap: 8px; align-items: center; font-weight: 400; min-height: 42px; }
 .lbl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .lbl-row label { margin: 0; }
 .rep-table tr.sel td { background: var(--accent-soft); }
@@ -700,7 +715,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.9";
+const APP_VERSION = "2026-09-28.10";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -940,7 +955,7 @@ function seedState() {
   settings.profile.start = todayKey();
   return {
     settings, checklists: [], history: [], properties: [],
-    events: [], orders: [], days: {}, logs: [], reports: {}, chat: [], homework: [],
+    events: [], orders: [], days: {}, logs: [], reports: {}, chat: [], homework: [], flows: [], flowRuns: [],
     flags: { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true }
   };
 }
@@ -1072,6 +1087,16 @@ function sanitizeState(raw) {
     homework: uniq(arr(s.homework).filter(h => h && str(h.text, 2000)).map(h => ({
       id: id(h.id), subject: str(h.subject, 80) || "Sonstiges", text: str(h.text, 2000), due: keyOr(h.due), done: !!h.done, at: num(h.at) ?? Date.now()
     }))).slice(-500),
+    flows: uniq(arr(s.flows).filter(f => f && str(f.title, 120)).map(f => ({
+      id: id(f.id), title: str(f.title, 120), desc: str(f.desc, 400), updatedAt: num(f.updatedAt) ?? Date.now(),
+      steps: arr(f.steps).filter(x => x && str(x.text, 400)).map(x => ({ id: id(x.id), text: str(x.text, 400), copy: str(x.copy, 4000) })).slice(0, 60)
+    }))).slice(0, 100),
+    flowRuns: uniq(arr(s.flowRuns).filter(r => r && str(r.flowId, 80)).map(r => {
+      const data = {}, checks = {};
+      Object.entries(obj(r.data)).slice(0, 40).forEach(([k, v]) => { if (/^\w{1,30}$/.test(k)) data[k] = typeof v === "boolean" ? v : str(v, 2000); });
+      Object.entries(obj(r.checks)).slice(0, 120).forEach(([k, v]) => { if (v === true && /^[\w-]{1,80}$/.test(k)) checks[k] = true; });
+      return { id: id(r.id), flowId: str(r.flowId, 80), title: str(r.title, 200) || "Aufgabe", startedAt: num(r.startedAt) ?? Date.now(), doneAt: num(r.doneAt), data, checks };
+    })).slice(-300),
     flags: { schoolSeeded: !!flags.schoolSeeded, seedChecked: !!flags.seedChecked, timetable: !!flags.timetable, subjectCodes: !!flags.subjectCodes }
   };
 }
@@ -1500,6 +1525,8 @@ function parseRoute() {
     case "lists": return { view: "lists", tab: ["favorites", "archive"].includes(b) ? b : "active" };
     case "list": return getList(b) ? { view: "list", listId: b } : { view: "lists", tab: "active" };
     case "templates": return { view: "templates" };
+    case "tasks": return { view: "tasks" };
+    case "task": return state.flowRuns.some(r => r.id === b) ? { view: "task", runId: b } : { view: "tasks" };
     case "report": return { view: "report", n: Number(b) >= 1 ? Math.min(400, Number(b)) : Math.max(1, weekNo(todayKey())) };
     case "settings": return { view: "settings" };
     default: return { view: "overview" };
@@ -1560,14 +1587,13 @@ const NAV = [
   ["calendar", "#/calendar", "cal", "Kalender", 1, "Arbeit"],
   ["props", "#/props", "building", "Liegenschaften", 0, "Arbeit"],
   ["assistant", "#/assistant", "chat", "Assistent", 0, "Arbeit"],
-  ["lists", "#/lists", "clipboard", "Checklisten", 0, "Arbeit"],
-  ["templates", "#/templates", "layers", "Vorlagen", 0, "Arbeit"],
+  ["tasks", "#/tasks", "clipboard", "Aufgaben", 0, "Arbeit"],
   ["settings", "#/settings", "sliders", "Einstellungen", 0, ""]
 ];
 const SCHOOL_VIEWS = ["school", "homework", "report"];
-const WORK_VIEWS = ["work", "today", "time", "props", "assistant", "lists", "templates"];
+const WORK_VIEWS = ["work", "today", "time", "props", "assistant", "tasks", "task", "lists", "templates"];
 function curNav(route) {
-  if (route.view === "list") return getList(route.listId)?.template ? "templates" : "lists";
+  if (["task", "list", "lists", "templates"].includes(route.view)) return "tasks";
   if (route.view === "prop") return "props";
   return route.view;
 }
@@ -1727,8 +1753,7 @@ function renderWork() {
     ["#/calendar", "cal", "Kalender", `${plural(eventsOn(k).filter(e => e.kind !== "schule").length, "Termin", "Termine")} heute`],
     ["#/props", "building", "Liegenschaften", `${state.properties.filter(p => !p.archived).length} Objekte`],
     ["#/assistant", "chat", "Assistent", "Aufträge Schritt für Schritt"],
-    ["#/lists", "clipboard", "Checklisten", `${runs().length} aktiv`],
-    ["#/templates", "layers", "Vorlagen", `${templates().length} gespeichert`],
+    ["#/tasks", "clipboard", "Aufgaben", `${plural(state.flowRuns.filter(r => !r.doneAt).length, "Aufgabe", "Aufgaben")} offen`],
     ["#/settings", "sliders", "Einstellungen", "Profil, Sync, Daten"]
   ];
   return `
@@ -2394,6 +2419,167 @@ function renderAssistant() {
 }
 
 /* ==========================================================
+   Aufgaben: geführte Abläufe mit Abhaken (eingebaut: Auftrag an Handwerker)
+   ========================================================== */
+const GEWERKE = ["Sanitär", "Heizung", "Elektro", "Schreiner", "Glaser", "Maler", "Dach / Spengler", "Fliesen", "Rollladen", "Schlüsseldienst", "Rohrreinigung", "Aufzug", "Rauchmelder", "Schädlingsbekämpfung", "Garten", "Reinigung", "Hausmeister", "Sonstiges"];
+const AUFTRAG_VORLAGEN = ["Auftrag Mietvertrag", "Mängelrüge Mietvertrag", "Auftrag Wohneinheit", "Mängelrüge Wohneinheit"];
+const FIRMEN = { 1: "Gregor Deurer GmbH & Co. KG", 2: "Dr. Markus Deurer, Vermietungen", 11: "Sonderbilanz Gregor Deurer GmbH & Co. KG" };
+const BUILTIN_FLOWS = [{ id: "auftrag", title: "Auftrag an Handwerker erteilen", desc: "Mängelmeldung aus E-Mail oder casavi – Immotion, Word, Ablage, Versand." }];
+const HW_MAIL = "Sehr geehrte Damen und Herren,\n\nanbei übersende ich Ihnen einen Auftrag.\n\nBei Rückfragen stehen wir Ihnen gerne zur Verfügung.";
+/* Nächster Werktag (ohne Wochenende und Feiertage) */
+function nextWorkday(k) { let d = addDays(pkey(k), 1); while ([0, 6].includes(d.getDay()) || holiday(dkey(d))) d = addDays(d, 1); return dkey(d); }
+const fristAuto = d => d.dringend ? nextWorkday(d.datum || todayKey()) : dkey(addDays(pkey(d.datum || todayKey()), 7));
+function auftragInfo(d) {
+  const datum = d.datum || todayKey(), frist = d.frist || fristAuto(d), dt = pkey(datum);
+  const base = `${String(dt.getFullYear()).slice(2)}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}_Auftrag_${(d.handwerker || "Firma").trim()}`;
+  const mieter = d.betrifft !== "Wohneinheit";
+  const anrede = d.anrede === "Herr" ? `Sehr geehrter Herr ${d.mieter || ""},` : d.anrede === "Frau" ? `Sehr geehrte Frau ${d.mieter || ""},` : "Sehr geehrte Damen und Herren,";
+  const mangel = (d.mangel || "Mangel").trim();
+  return {
+    frist, base, mieter, firmaNr: d.firmaNr || "1",
+    text: `${mangel}, bitte um Reparatur. Erledigung bis ${fmtD(frist)}.`,
+    ordner: ["Daten", "Projekte", "Wohnanlagen", d.wohnanlage || "(Wohnanlage)", ...(mieter ? ["Wohnungen", d.mieter || "(Mieter)"] : []), "Aufträge", String(dt.getFullYear())].join(" › "),
+    betreff: `Auftrag: ${mangel}${d.wohnanlage ? ` – ${d.wohnanlage}` : ""}`,
+    mieterMail: `${anrede}\n\nanbei erhalten Sie Ihren Auftrag bezüglich Ihrer Mängelmeldung (${mangel}). Die Firma ${d.handwerker || ""} wird sich zur Terminvereinbarung bei Ihnen melden.\n\nBei Rückfragen stehen wir Ihnen gerne zur Verfügung.`.replace("Firma  wird", "beauftragte Firma wird"),
+    casavi: `Guten Tag,\n\nwir haben ${d.handwerker ? `die Firma ${d.handwerker}` : "eine Fachfirma"} mit der Behebung beauftragt (${mangel}). Den Auftrag finden Sie im Anhang. Die Firma meldet sich zur Terminvereinbarung bei Ihnen.`
+  };
+}
+/* Schritte des eingebauten Ablaufs; Schritte hängen von den Angaben ab */
+function auftragSteps(d) {
+  const a = auftragInfo(d), mail = d.quelle !== "casavi", me = state.settings.profile.name || "dich selbst";
+  const S = (id, sec, text, copy = "", copyLabel = "") => ({ id, sec, text, copy, copyLabel });
+  return [
+    S("in1", "Eingang", mail ? "E-Mail (CC) lesen: Name, Adresse und Problem des Mieters in die Angaben oben übernehmen" : "casavi-Vorgang öffnen (du wurdest markiert): Name, Adresse und Problem in die Angaben oben übernehmen"),
+    S("im1", "Immotion", `Immotion öffnen und Firma ${a.firmaNr} wählen (${FIRMEN[a.firmaNr] || ""})`),
+    S("im2", "Immotion", "Unten rechts „Alle Datensätze laden“"),
+    S("im3", "Immotion", `Bei „Suchname“ den Nachnamen eingeben: ${d.mieter || "(Nachname)"}`, d.mieter || "", "Name"),
+    S("im4", "Immotion", `Richtige Wohnung prüfen${d.wohnung ? ` (${d.wohnung})` : ""} und Mieter doppelklicken`),
+    S("im5", "Immotion", "Weitere Aktionen › Auftrag erstellen (Straße, Wohnung und Mieter sind schon eingetragen)"),
+    S("im6", "Immotion", "Abteilung: Hausverwaltung"),
+    S("im7", "Immotion", `Erfasser: ${me}`),
+    S("im8", "Immotion", `Gewerk: ${d.gewerk || "(Gewerk wählen)"}`),
+    S("im9", "Immotion", `Budgetposition: ${d.budget || "Planmäßige Instandhaltung"}`),
+    S("im10", "Immotion", `Text einfügen: „${a.text}“`, a.text, "Text"),
+    S("im11", "Immotion", `Details › Datum auf ${fmtD(a.frist)} setzen${d.dringend ? " (dringend)" : ""}`, fmtD(a.frist), "Datum"),
+    S("im12", "Immotion", "Speichern › Auftrag erteilen"),
+    S("im13", "Immotion", `Vorlage „${d.vorlage || AUFTRAG_VORLAGEN[0]}“ wählen › Vorschau (Word öffnet sich)`),
+    S("wd1", "Word prüfen", "Serienbrief-Fehler entfernen: doppelte Kommas, doppelte Adresse oder E-Mail"),
+    S("wd2", "Word prüfen", "Text, Datum, Handwerker und Mieter kontrollieren"),
+    S("sv1", "Speichern", `Ordner öffnen: ${a.ordner}`),
+    S("sv2", "Speichern", `Als Word speichern: ${a.base}.docx`, a.base, "Name"),
+    ...(a.mieter ? [
+      S("sv3", "Speichern", `Als PDF nur Seite 1 speichern (für Handwerker): ${a.base}.pdf`, a.base, "Name"),
+      S("sv4", "Speichern", `Als PDF nur Seite 2 speichern (für Mieter): ${a.base}_Mieter.pdf`, a.base + "_Mieter", "Name")
+    ] : [S("sv3", "Speichern", `Als PDF speichern: ${a.base}.pdf`, a.base, "Name")]),
+    S("vs0", "Versand", `E-Mail an ${d.handwerker || "den Handwerker"}: Betreff „${a.betreff}“`, a.betreff, "Betreff"),
+    S("vs1", "Versand", `Text einfügen und ${a.base}.pdf anhängen, senden`, HW_MAIL, "Text"),
+    ...(a.mieter ? (mail
+      ? [S("vs2", "Versand", `E-Mail an den Mieter mit ${a.base}_Mieter.pdf`, a.mieterMail, "Text")]
+      : [S("vs3", "Versand", `In casavi dem Mieter antworten und ${a.base}_Mieter.pdf anhängen`, a.casavi, "Kommentar")])
+      : [mail ? S("vs4", "Versand", "Absender der E-Mail kurz über die Beauftragung informieren") : S("vs5", "Versand", `In casavi antworten und ${a.base}.pdf anhängen`, a.casavi, "Kommentar")])
+  ];
+}
+function flowOf(run) { return BUILTIN_FLOWS.find(f => f.id === run.flowId) || state.flows.find(f => f.id === run.flowId); }
+function runSteps(run) {
+  if (run.flowId === "auftrag") return auftragSteps(run.data);
+  const f = flowOf(run);
+  return f ? f.steps.map(x => ({ id: x.id, sec: "", text: x.text, copy: x.copy, copyLabel: "Text" })) : [];
+}
+function startFlow(flowId) {
+  const f = BUILTIN_FLOWS.find(x => x.id === flowId) || state.flows.find(x => x.id === flowId);
+  if (!f) return;
+  const run = { id: uid(), flowId, title: f.title, startedAt: Date.now(), doneAt: null, data: flowId === "auftrag" ? { quelle: "E-Mail", betrifft: "Mieter", firmaNr: "1", budget: "Planmäßige Instandhaltung", vorlage: AUFTRAG_VORLAGEN[0], datum: todayKey(), anrede: "", termin: true } : {}, checks: {} };
+  state.flowRuns.push(run); saveState(); go(`/task/${run.id}`);
+}
+function renderTasks() {
+  const open = state.flowRuns.filter(r => !r.doneAt).sort((a, b) => b.startedAt - a.startedAt);
+  const done = state.flowRuns.filter(r => r.doneAt).sort((a, b) => b.doneAt - a.doneAt).slice(0, 15);
+  const flows = [...BUILTIN_FLOWS.map(f => ({ ...f, builtin: true, n: auftragSteps({}).length })), ...state.flows.map(f => ({ ...f, n: f.steps.length }))];
+  const prog = r => { const st = runSteps(r), n = st.filter(x => r.checks[x.id]).length; return [n, st.length]; };
+  const runLabel = r => r.flowId === "auftrag" ? [r.data.mangel, r.data.mieter || r.data.wohnanlage, r.data.handwerker].filter(Boolean).join(" · ") : "";
+  return `
+    <div class="page-head"><div><p class="eyebrow">Arbeit · Aufgaben</p><h1>Schritt für Schritt. <span class="hl">Nichts vergessen.</span></h1><p class="lede">Aufgabe starten, Angaben eintragen, durchscrollen und abhaken. Texte und Dateinamen zum Kopieren.</p></div>
+      <div class="head-actions"><button type="button" class="btn" data-act="flow-new">${icon("plus", 16)} Eigene Aufgabe</button></div></div>
+    <div class="stack" style="gap:18px">
+      ${open.length ? `<section class="panel panel-pad"><div class="sec-head"><h2>Läuft gerade</h2><span class="hint-text">${open.length}</span></div>
+        ${open.map(r => { const [n, t] = prog(r); return `<div class="item"><a class="link-btn grow" href="#/task/${r.id}"><strong>${esc(r.title)}</strong>${runLabel(r) ? `<br><span class="hint-text">${esc(runLabel(r))}</span>` : ""}</a><span class="hint-text">${n}/${t}</span><div class="bar" style="width:90px"><span style="width:${t ? Math.round(n / t * 100) : 0}%"></span></div><a class="btn small primary" href="#/task/${r.id}">Weiter</a><button type="button" class="btn small icon" data-act="run-del" data-value="${r.id}" aria-label="Löschen">${icon("trash", 14)}</button></div>`; }).join("")}</section>` : ""}
+      <section class="panel panel-pad"><div class="sec-head"><h2>Aufgaben</h2></div>
+        ${flows.map(f => `<div class="item"><div class="grow"><strong>${esc(f.title)}</strong><br><span class="hint-text">${esc(f.desc || "")}${f.desc ? " · " : ""}${plural(f.n, "Schritt", "Schritte")}</span></div>
+          <button type="button" class="btn small primary" data-act="flow-start" data-value="${f.id}">${icon("play", 14)} Starten</button>
+          ${f.builtin ? "" : `<button type="button" class="btn small icon" data-act="flow-edit" data-value="${f.id}" aria-label="Bearbeiten">${icon("edit", 14)}</button><button type="button" class="btn small icon" data-act="flow-del" data-value="${f.id}" aria-label="Löschen">${icon("trash", 14)}</button>`}</div>`).join("")}
+      </section>
+      ${done.length ? `<section class="panel panel-pad"><div class="sec-head"><h2>Erledigt</h2></div>${done.map(r => `<div class="item"><a class="link-btn grow" href="#/task/${r.id}">${esc(r.title)}${runLabel(r) ? ` <span class="hint-text">· ${esc(runLabel(r))}</span>` : ""}</a><span class="hint-text">${fmtD(dkey(r.doneAt))}</span></div>`).join("")}</section>` : ""}
+    </div>`;
+}
+function renderTaskRun(run) {
+  if (!run) return renderTasks();
+  const d = run.data, steps = runSteps(run), n = steps.filter(x => run.checks[x.id]).length, all = n === steps.length && steps.length > 0;
+  const fld = (key, label, input) => `<div class="field"><label for="rf-${key}">${label}</label>${input}</div>`;
+  const inp = (key, label, ph = "", type = "text") => fld(key, label, `<input class="input" id="rf-${key}" data-run="${run.id}" data-key="${key}" type="${type}" value="${esc(d[key] || "")}" placeholder="${esc(ph)}" ${run.doneAt ? "disabled" : ""}>`);
+  const sel = (key, label, opts) => fld(key, label, `<select class="select" id="rf-${key}" data-run="${run.id}" data-key="${key}" ${run.doneAt ? "disabled" : ""}>${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${String(d[key] || "") === String(v) ? "selected" : ""}>${esc(l)}</option>`; }).join("")}</select>`);
+  const props = state.properties.filter(p => !p.archived);
+  const form = run.flowId !== "auftrag" ? "" : `
+    <section class="panel panel-pad">
+      <div class="sec-head"><h2>Angaben</h2><span class="hint-text">füllen die Schritte automatisch</span></div>
+      <div class="form">
+        ${sel("quelle", "Meldung kam per", ["E-Mail", "casavi"])}
+        ${sel("betrifft", "Betrifft", [["Mieter", "Mieter (Wohnung)"], ["Wohneinheit", "Ganze Wohneinheit / Wohnanlage"]])}
+        ${fld("prop", "Liegenschaft", `<input class="input" id="rf-prop" data-run="${run.id}" data-key="prop" list="propList" value="${esc(d.prop || "")}" placeholder="VE oder Straße" ${run.doneAt ? "disabled" : ""}><datalist id="propList">${props.map(p => `<option value="${esc(propLabel(p))}"></option>`).join("")}</datalist>`)}
+        ${sel("firmaNr", "Firma in Immotion", [["1", "Firma 1"], ["2", "Firma 2"], ["11", "Firma 11"]])}
+        ${inp("wohnanlage", "Wohnanlage (Ordnername)", "z. B. Sonnengrün")}
+        ${d.betrifft !== "Wohneinheit" ? inp("mieter", "Nachname Mieter", "z. B. Müller") + sel("anrede", "Anrede Mieter", [["", "neutral"], "Frau", "Herr"]) + inp("wohnung", "Wohnung (optional)", "z. B. 2. OG links") : ""}
+        ${inp("mangel", "Mangel (kurz)", "z. B. Wasserhahn defekt")}
+        ${sel("gewerk", "Gewerk", [["", "– wählen –"], ...GEWERKE])}
+        ${inp("handwerker", "Handwerksfirma", "z. B. Müller Sanitär")}
+        ${inp("budget", "Budgetposition")}
+        ${sel("vorlage", "Vorlage", AUFTRAG_VORLAGEN)}
+        ${inp("datum", "Auftragsdatum", "", "date")}
+        ${fld("dringend", "Dringend", `<label class="check-line"><input type="checkbox" id="rf-dringend" data-run="${run.id}" data-key="dringend" ${d.dringend ? "checked" : ""} ${run.doneAt ? "disabled" : ""}> nächster Werktag statt 1 Woche</label>`)}
+        ${inp("frist", "Erledigung bis", "", "date").replace(`value="${esc(d.frist || "")}"`, `value="${esc(d.frist || fristAuto(d))}"`)}
+        ${fld("termin", "Kalender", `<label class="check-line"><input type="checkbox" id="rf-termin" data-run="${run.id}" data-key="termin" ${d.termin !== false ? "checked" : ""} ${run.doneAt ? "disabled" : ""}> Frist beim Abschließen eintragen</label>`)}
+      </div>
+      <p class="hint-text" style="margin-top:8px">Frist automatisch: ${fmtD(fristAuto(d))}${d.frist ? ` · eingetragen: ${fmtD(d.frist)}` : ""}</p>
+    </section>`;
+  let sec = "";
+  const list = steps.map((x, i) => {
+    const head = x.sec && x.sec !== sec ? `<h3 class="step-sec">${esc((sec = x.sec))}</h3>` : "";
+    const on = !!run.checks[x.id];
+    return `${head}<div class="step ${on ? "on" : ""}">
+      <button type="button" class="step-check" data-act="run-check" data-value="${run.id}" data-step="${x.id}" aria-pressed="${on}" ${run.doneAt ? "disabled" : ""}><span class="box">${on ? icon("check", 14) : ""}</span><span class="num">${i + 1}</span><span class="txt">${esc(x.text)}</span></button>
+      ${x.copy ? `<button type="button" class="btn small" data-act="run-copy" data-value="${run.id}" data-step="${x.id}">${icon("copy", 13)} ${esc(x.copyLabel || "Kopieren")}</button>` : ""}
+      ${x.copy && x.copy.includes("\n") ? `<pre class="step-copy">${esc(x.copy)}</pre>` : ""}
+    </div>`;
+  }).join("");
+  return `
+    <div class="page-head"><div><p class="eyebrow"><a href="#/tasks">Aufgaben</a> · ${run.doneAt ? `erledigt am ${fmtD(dkey(run.doneAt))}` : "läuft"}</p><h1>${esc(run.title)}</h1><p class="lede">Durchscrollen und abhaken. Abschließen geht, wenn alles abgehakt ist.</p></div></div>
+    <div class="run-bar"><div class="bar"><span style="width:${steps.length ? Math.round(n / steps.length * 100) : 0}%"></span></div><span><strong>${n}</strong> von ${steps.length}</span></div>
+    <div class="stack" style="gap:16px">
+      ${form}
+      <section class="panel panel-pad"><div class="sec-head"><h2>Schritte</h2><span class="hint-text">Zeile antippen = abhaken</span></div><div class="steps">${list}</div></section>
+      ${run.doneAt ? `<div class="btn-row"><button type="button" class="btn" data-act="run-reopen" data-value="${run.id}">Wieder öffnen</button></div>`
+        : `<div class="btn-row"><button type="button" class="btn primary" data-act="run-finish" data-value="${run.id}" ${all ? "" : "disabled"}>${icon("check", 16)} Abschließen</button><span class="hint-text" style="align-self:center">${all ? "Alles erledigt." : `Noch ${steps.length - n} offen.`}</span></div>`}
+    </div>`;
+}
+function finishRun(run) {
+  run.doneAt = Date.now();
+  if (run.flowId === "auftrag") {
+    const d = run.data, a = auftragInfo(d), k = todayKey();
+    state.logs.push({ id: uid(), date: k, text: `Auftrag an ${d.handwerker || "Handwerker"} erteilt: ${d.mangel || "Mangel"}${d.wohnanlage ? ` (${d.wohnanlage})` : ""}`, src: "order", ref: run.id });
+    if (d.termin !== false) state.events.push(makeEvent({ title: `Frist: ${d.mangel || "Auftrag"} – ${d.handwerker || "Handwerker"}`, date: a.frist, allDay: true, note: `${a.base}\n${a.text}`, report: false }));
+  } else state.logs.push({ id: uid(), date: todayKey(), text: run.title, src: "list", ref: run.id });
+  saveState(); render(); toast("Aufgabe abgeschlossen und fürs Berichtsheft gemerkt.");
+}
+function openFlowEditor(f) {
+  const lines = f ? f.steps.map(x => x.copy ? `${x.text} | ${x.copy.replace(/\n/g, "\\n")}` : x.text).join("\n") : "";
+  openDialog({ title: f ? "Aufgabe bearbeiten" : "Eigene Aufgabe", body: `
+    <form class="stack" id="flowForm" data-id="${f ? f.id : ""}" style="gap:12px">
+      <div class="field"><label for="flTitle">Name</label><input class="input" id="flTitle" required value="${esc(f ? f.title : "")}" placeholder="z. B. Wohnungsübergabe vorbereiten"></div>
+      <div class="field"><label for="flDesc">Kurzbeschreibung</label><input class="input" id="flDesc" value="${esc(f ? f.desc : "")}"></div>
+      <div class="field"><label for="flSteps">Schritte <span class="hint-text">– einer pro Zeile · Text zum Kopieren nach „|“, Absatz mit \\n</span></label><textarea class="textarea" id="flSteps" rows="10" placeholder="Unterlagen ausdrucken&#10;Termin im Kalender eintragen&#10;E-Mail senden | Sehr geehrte Damen und Herren,\\n\\n...">${esc(lines)}</textarea></div>
+      <div class="btn-row"><button type="submit" class="btn primary">Speichern</button></div>
+    </form>` });
+}
+/* ==========================================================
    Berichtsheft
    ========================================================== */
 function repDraft(n) {
@@ -2570,7 +2756,7 @@ function renderSettings() {
 /* ==========================================================
    Rendern
    ========================================================== */
-const TITLES = { work: "Arbeit", time: "Zeiterfassung", school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", report: "Berichtsheft", settings: "Einstellungen" };
+const TITLES = { work: "Arbeit", time: "Zeiterfassung", school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", tasks: "Aufgaben", task: "Aufgabe", report: "Berichtsheft", settings: "Einstellungen" };
 function focusKey(el) { const d = el.dataset || {}; return [el.id, d.act, d.task, d.list, d.value, d.date, el.getAttribute("name"), el.getAttribute("href")].join("|"); }
 function findByKey(key) {
   if (!key || /^\|+$/.test(key)) return null;
@@ -2587,6 +2773,8 @@ function renderPage(route) {
     case "lists": return renderLists(route);
     case "list": return renderListPage(getList(route.listId));
     case "templates": return renderTemplates();
+    case "tasks": return renderTasks();
+    case "task": return renderTaskRun(state.flowRuns.find(r => r.id === route.runId));
     case "report": return renderReport(route);
     case "school": return renderTimetable();
     case "work": return renderWork();
@@ -3248,6 +3436,20 @@ async function handleAction(act, el) {
       break;
     }
     case "rep-tab": readRepForm(); ui.repTab = val; render(); break;
+    case "flow-start": startFlow(val); break;
+    case "flow-new": openFlowEditor(null); break;
+    case "flow-edit": openFlowEditor(state.flows.find(f => f.id === val)); break;
+    case "flow-del": {
+      const f = state.flows.find(x => x.id === val);
+      if (!f || !(await confirmDialog({ title: "Aufgabe löschen?", text: `„${f.title}“ wird gelöscht.`, confirm: "Löschen", danger: true }))) break;
+      const snap = snapshot(); state.flows = state.flows.filter(x => x.id !== val); saveState(); render(); toastUndo("Aufgabe gelöscht.", snap); break;
+    }
+    case "run-del": { const snap = snapshot(); state.flowRuns = state.flowRuns.filter(r => r.id !== val); saveState(); render(); toastUndo("Laufende Aufgabe gelöscht.", snap); break; }
+    case "run-check": { const r = state.flowRuns.find(x => x.id === val); if (!r || r.doneAt) break; const k = el.dataset.step; if (r.checks[k]) delete r.checks[k]; else r.checks[k] = true; saveState(); render(); break; }
+    case "run-all": { const r = state.flowRuns.find(x => x.id === val); if (!r) break; runSteps(r).forEach(x => { r.checks[x.id] = true; }); saveState(); render(); break; }
+    case "run-copy": { const r = state.flowRuns.find(x => x.id === val); const x = r && runSteps(r).find(y => y.id === el.dataset.step); if (x) copyText(x.copy); break; }
+    case "run-finish": { const r = state.flowRuns.find(x => x.id === val); if (r && runSteps(r).every(x => r.checks[x.id])) finishRun(r); break; }
+    case "run-reopen": { const r = state.flowRuns.find(x => x.id === val); if (r) { r.doneAt = null; saveState(); render(); } break; }
     case "rep-open": ui.repTab = "edit"; go(`/report/${val}`); break;
     case "rep-head-reset": readRepForm(); Object.assign(ui.rep, { nr: 0, from: "", to: "" }); saveReport(); render(); toast("Nummer und Zeitraum wieder automatisch."); break;
     case "rep-pdf": {
@@ -3437,6 +3639,14 @@ document.addEventListener("submit", e => {
     });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
+  } else if (f.id === "flowForm") {
+    const title = $("#flTitle").value.trim();
+    if (!title) return;
+    const steps = $("#flSteps").value.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 60).map(l => { const i = l.indexOf("|"); return { id: uid(), text: (i >= 0 ? l.slice(0, i) : l).trim(), copy: i >= 0 ? l.slice(i + 1).trim().replace(/\\n/g, "\n") : "" }; }).filter(x => x.text);
+    const old = state.flows.find(x => x.id === f.dataset.id);
+    if (old) Object.assign(old, { title, desc: $("#flDesc").value.trim(), steps: steps.map((x, i) => ({ ...x, id: old.steps[i] ? old.steps[i].id : x.id })), updatedAt: Date.now() });
+    else state.flows.push({ id: uid(), title, desc: $("#flDesc").value.trim(), steps, updatedAt: Date.now() });
+    closeDialog(); saveState(); render(); toast("Aufgabe gespeichert.");
   } else if (f.id === "repDateForm") {
     const k = keyOr($("#rpDate").value), i = k ? weekNo(k) : 0;
     if (i >= 1) { ui.repTab = "edit"; go(`/report/${i}`); } else toast("Bitte ein Datum ab Ausbildungsbeginn wählen.");
@@ -3487,6 +3697,17 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.name === "qtype") ui.quickType = t.value;
+  else if (t.dataset && t.dataset.run) {
+    const r = state.flowRuns.find(x => x.id === t.dataset.run), key = t.dataset.key;
+    if (!r || r.doneAt) return;
+    r.data[key] = t.type === "checkbox" ? t.checked : t.value.trim();
+    if (key === "prop") {
+      const p = state.properties.find(x => propLabel(x) === t.value.trim());
+      if (p) { if (["1", "2", "11"].includes(p.firmaNr)) r.data.firmaNr = p.firmaNr; r.data.wohnanlage = p.name; }
+    }
+    if (key === "dringend" || key === "datum") r.data.frist = "";
+    saveState(); render();
+  }
   else if (t.id === "taskSort") { ui.sort = t.value; render(); }
   else if (t.id === "listSort") { state.settings.sort = t.value; saveState(); render(); }
   else if (t.id === "hwSub") { ui.hwSubject = t.value; const d = $("#hwDue"); if (d) d.value = nextSchoolDay(dkey(addDays(new Date(), 1)), t.value); }
@@ -3759,7 +3980,7 @@ function applyRemote(row) {
 function mergeStates(remote, local) {
   const byId = (r, l) => { r = arr(r); const ids = new Set(r.map(x => x && x.id)); return [...r, ...arr(l).filter(x => x && !ids.has(x.id))]; };
   const m = { ...remote };
-  ["checklists", "history", "properties", "events", "orders", "logs", "homework"].forEach(k => { m[k] = byId(remote[k], local[k]); });
+  ["checklists", "history", "properties", "events", "orders", "logs", "homework", "flows", "flowRuns"].forEach(k => { m[k] = byId(remote[k], local[k]); });
   ["days", "reports"].forEach(k => { m[k] = { ...obj(local[k]), ...obj(remote[k]) }; });
   return m;
 }
