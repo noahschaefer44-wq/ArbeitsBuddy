@@ -1,4 +1,5 @@
-// Lernkarte per Gemini erstellen. Schluessel bleibt als Secret GEMINI_API_KEY auf dem Server.
+// Lernkarte per KI erstellen. Der Schluessel liegt nur auf dem Server:
+// als Secret (XKIRO_API_KEY / GEMINI_API_KEY) oder in der Tabelle public.app_secrets (nur service_role).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const CORS = {
@@ -7,6 +8,8 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const DAILY_LIMIT = 60;
+/* Kostenlose Modelle bei xKiro, in dieser Reihenfolge versucht */
+const XKIRO_MODELS = ["qwen/qwen3.5-flash:free", "mistralai/mistral-medium-3.5", "qwen/qwen3.5-plus:free"];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 /* Token bei Supabase Auth pruefen (Signatur und Ablauf), liefert die Nutzer-ID */
@@ -18,6 +21,19 @@ async function userId(req: Request, url: string, anon: string): Promise<string> 
   const u = await r.json().catch(() => ({}));
   return typeof u?.id === "string" ? u.id : "";
 }
+async function secret(url: string, service: string, name: string): Promise<string> {
+  const env = Deno.env.get(name);
+  if (env) return env;
+  const r = await fetch(`${url}/rest/v1/app_secrets?name=eq.${name}&select=value`, { headers: { apikey: service, Authorization: `Bearer ${service}` } });
+  const rows = r.ok ? await r.json().catch(() => []) : [];
+  return rows[0]?.value || "";
+}
+function parseCard(text: string) {
+  let card: { frage?: string; antwort?: string } = {};
+  const raw = text.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*?(\{[\s\S]*\})[\s\S]*$/, "$1");
+  try { card = JSON.parse(raw); } catch { /* leer */ }
+  return { front: String(card.frage || "").trim().slice(0, 300), back: String(card.antwort || "").trim().slice(0, 2000) };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -27,8 +43,8 @@ Deno.serve(async (req) => {
   const uid = await userId(req, url, anon);
   if (!uid) return json({ error: "Bitte anmelden." }, 401);
 
-  const key = Deno.env.get("GEMINI_API_KEY");
-  if (!key) return json({ error: "Kein Gemini-Schlüssel hinterlegt (Supabase › Edge Functions › Secrets › GEMINI_API_KEY)." }, 503);
+  const xkiro = await secret(url, service, "XKIRO_API_KEY"), gemini = xkiro ? "" : await secret(url, service, "GEMINI_API_KEY");
+  if (!xkiro && !gemini) return json({ error: "Kein KI-Schlüssel hinterlegt." }, 503);
 
   let body: { term?: unknown; subject?: unknown } = {};
   try { body = await req.json(); } catch { /* leer */ }
@@ -56,21 +72,32 @@ Deno.serve(async (req) => {
     "Wenn der Begriff mehrdeutig ist, wähle die Bedeutung aus der Immobilienwirtschaft.",
   ].join("\n");
 
+  let lastError = "";
+  if (xkiro) {
+    for (const model of XKIRO_MODELS) {
+      const r = await fetch("https://api.xkiro.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${xkiro}` },
+        body: JSON.stringify({ model, temperature: 0.4, max_tokens: 600, response_format: { type: "json_object" }, messages: [{ role: "user", content: prompt }] }),
+      }).catch(() => null);
+      const data = r ? await r.json().catch(() => ({})) : {};
+      if (!r || !r.ok) { lastError = data?.error?.message || `Status ${r ? r.status : "offline"}`; continue; }
+      const card = parseCard(data?.choices?.[0]?.message?.content || "");
+      if (card.front && card.back) return json({ ...card, used, limit: DAILY_LIMIT });
+      lastError = "leere Antwort";
+    }
+    return json({ error: `KI-Dienst: ${lastError}. Bitte nochmal versuchen.` }, 502);
+  }
+
   const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.4, responseMimeType: "application/json", maxOutputTokens: 600 },
-    }),
+    headers: { "Content-Type": "application/json", "x-goog-api-key": gemini },
+    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, responseMimeType: "application/json", maxOutputTokens: 600 } }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) return json({ error: `Gemini: ${data?.error?.message || r.status}` }, 502);
-  const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || "").join("") || "";
-  let card: { frage?: string; antwort?: string } = {};
-  try { card = JSON.parse(text.replace(/^```(json)?|```$/g, "").trim()); } catch { /* unten */ }
-  const front = String(card.frage || "").trim().slice(0, 300), back = String(card.antwort || "").trim().slice(0, 2000);
-  if (!front || !back) return json({ error: "Die KI hat keine brauchbare Karte geliefert. Bitte nochmal versuchen." }, 502);
-  return json({ front, back, used, limit: DAILY_LIMIT });
+  const card = parseCard(data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || "").join("") || "");
+  if (!card.front || !card.back) return json({ error: "Die KI hat keine brauchbare Karte geliefert. Bitte nochmal versuchen." }, 502);
+  return json({ ...card, used, limit: DAILY_LIMIT });
 });
