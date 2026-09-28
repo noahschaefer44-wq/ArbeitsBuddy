@@ -1,5 +1,5 @@
-/* ArbeitsBuddy – Offline-Speicher. Bei jeder neuen Version CACHE hochzählen. */
-const CACHE = "arbeitsbuddy-v4";
+/* Azubino – Offline-Speicher. Bei jeder neuen Version CACHE hochzählen. */
+const CACHE = "azubino-v5";
 const FILES = ["./", "./index.html", "./arbeitsbuddy.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
