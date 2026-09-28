@@ -123,6 +123,19 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.3; }
 .lesson:last-child { border-bottom: 0; }
 .lesson .sub { font-size: 13px; color: var(--muted); }
 .lesson.pause { color: var(--muted); font-size: 13.5px; padding: 5px 0; }
+.stamp-card .now { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stamp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.stamp-btns .btn { min-height: 44px; padding: 0 18px; font-size: 16px; }
+.saldo { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.plus { color: var(--green); } .minus { color: var(--red); }
+.mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; }
+.mini .wd { font-size: 11.5px; color: var(--muted); padding: 2px 0; }
+.mini button { min-height: 44px; border-radius: 7px; display: grid; align-content: center; gap: 1px; font-size: 13px; border: 1px solid transparent; }
+.mini button:hover { background: var(--surface-2); }
+.mini button.other { color: var(--muted); opacity: .55; }
+.mini button.sel { border-color: var(--accent); background: var(--accent-soft); }
+.mini button.today .n { font-weight: 700; color: var(--accent); }
+.mini button .m { font-size: 10.5px; line-height: 1; min-height: 11px; }
 .hw { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .hw:last-child { border-bottom: 0; }
 .hw .grow { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -304,7 +317,7 @@ kbd { font: 500 12px/1 var(--font); padding: 3px 5px; border: 1px solid var(--li
 .ev.ferien { background: var(--warn-soft); color: var(--muted); }
 .ev.task { background: transparent; color: var(--ink-2); border: 1px dashed var(--line-strong); }
 .ev.order { background: transparent; color: var(--ink-2); border: 1px dashed var(--accent); }
-.ev.work { background: var(--green-soft); color: var(--green); }
+.ev.work { background: transparent; color: var(--green); font-size: 11px; padding: 0 5px; opacity: .85; }
 .ev.done { text-decoration: line-through; opacity: .7; }
 .more { font-size: 11.5px; color: var(--muted); padding-left: 5px; }
 .weekgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
@@ -465,6 +478,7 @@ legend.lab { padding: 0; margin-bottom: 5px; }
 @media (max-width: 1080px) {
   .detail-grid, .cols, .edit-grid { grid-template-columns: 1fr; }
   .side { position: static; }
+  .time-side { order: -1; }
   .weekgrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
 @media (max-width: 820px) {
@@ -846,6 +860,7 @@ function sanitizeDay(d) {
   return {
     from: timeOr(d.from), to: timeOr(d.to), pause: Math.max(0, Math.min(600, Number(d.pause) || 0)),
     status: d.status in DAY_STATUS ? d.status : "", school: str(d.school, 2000),
+    breaks: arr(d.breaks).map(b => ({ from: timeOr(obj(b).from), to: timeOr(obj(b).to) })).filter(b => b.from).slice(0, 12),
     entries: arr(d.entries).filter(x => x && str(x.text, 500)).map(x => ({ id: id(x.id), text: str(x.text, 500) })).slice(0, 50)
   };
 }
@@ -1062,7 +1077,43 @@ function occursOn(e, k) {
 }
 const byTime = (a, b) => (a.from || "00:00").localeCompare(b.from || "00:00");
 const eventsOn = k => state.events.filter(e => occursOn(e, k)).sort(byTime);
-const workMins = d => d && d.from && d.to && d.to > d.from ? Math.max(0, mins(d.to) - mins(d.from) - d.pause) : 0;
+/* ---------- Zeiterfassung: Soll 8 Std. Mo–Fr, Gleitzeit ---------- */
+const nowTime = () => { const x = new Date(); return `${pad(x.getHours())}:${pad(x.getMinutes())}`; };
+const breakMins = (d, now) => arr(d.breaks).reduce((n, b) => n + Math.max(0, mins(b.to || now || b.from) - mins(b.from)), 0) + (d.pause || 0);
+/* gesetzliche Mindestpause: über 6 Std. 30 Min., über 9 Std. 45 Min. */
+const legalPause = (raw, p) => Math.max(p, raw > 540 ? 45 : raw > 360 ? 30 : 0);
+const workMins = d => { if (!d || !d.from || !d.to || d.to <= d.from) return 0; const raw = mins(d.to) - mins(d.from); return Math.max(0, raw - legalPause(raw, breakMins(d))); };
+const liveMins = d => { if (!d || !d.from || d.to) return workMins(d); const now = nowTime(); return Math.max(0, mins(now) - mins(d.from) - breakMins(d, now)); };
+const schoolDay = k => !holiday(k) && state.events.some(e => e.kind === "schule" && occursOn(e, k));
+const sollMins = k => { const w = pkey(k).getDay(); return k >= startKey() && w >= 1 && w <= 5 && !holiday(k) ? 480 : 0; };
+/* Urlaub, Krank und Berufsschule zählen pauschal 8 Std. */
+function istMins(k) {
+  const d = state.days[k];
+  if (d && (d.status === "urlaub" || d.status === "krank")) return 480;
+  if (d && d.status === "frei") return 0;
+  if (schoolDay(k)) return 480;
+  return workMins(d);
+}
+const counted = k => { const t = todayKey(), d = state.days[k]; return k < t || (k === t && (!!(d && (d.to || d.status)) || schoolDay(k))); };
+function saldo(from, to) {
+  let n = 0;
+  for (let d = pkey(from < startKey() ? startKey() : from); dkey(d) <= to; d = addDays(d, 1)) { const k = dkey(d); if (counted(k)) n += istMins(k) - sollMins(k); }
+  return n;
+}
+function sumRange(from, to) {
+  let ist = 0, soll = 0;
+  for (let d = pkey(from); dkey(d) <= to; d = addDays(d, 1)) { const k = dkey(d); if (k >= startKey() && counted(k)) { ist += istMins(k); soll += sollMins(k); } }
+  return { ist, soll };
+}
+const fmtHM = (m, sign = false) => { const a = Math.abs(Math.round(m)); return `${m < 0 ? "−" : sign && m > 0 ? "+" : ""}${Math.floor(a / 60)}:${pad(a % 60)}`; };
+function timeSummary(k) {
+  const d = state.days[k];
+  if (d && d.status) return `${DAY_STATUS[d.status]}${d.status === "frei" ? "" : " (8 Std.)"}`;
+  if (schoolDay(k)) return "Berufsschule (8 Std.)";
+  if (d && d.from && !d.to) return `eingecheckt seit ${d.from} Uhr`;
+  if (d && workMins(d)) return `${d.from}–${d.to} Uhr, Pause ${fmtHM(legalPause(mins(d.to) - mins(d.from), breakMins(d)))} = ${fmtHM(workMins(d))} Std.`;
+  return "";
+}
 /* Alles, was an einem Tag im Kalender steht */
 function dayItems(k) {
   const items = [];
@@ -1070,8 +1121,8 @@ function dayItems(k) {
   if (hol) items.push({ cls: "feiertag", label: hol });
   /* Ferien nur dezent: Band über dem Tag, Beschriftung am ersten Tag und montags */
   if (fer && !hol && (pkey(k).getDay() === 1 || !ferien(dkey(addDays(pkey(k), -1))))) items.push({ cls: "ferien", label: fer });
-  if (d && d.status) items.push({ cls: "work", label: DAY_STATUS[d.status] });
-  else if (d && workMins(d)) items.push({ cls: "work", label: `Arbeit ${d.from}–${d.to}` });
+  if (d && d.status) items.push({ cls: "work", label: DAY_STATUS[d.status], time: true });
+  else if (d && workMins(d)) items.push({ cls: "work", label: `Arbeit ${d.from}–${d.to}`, time: true });
   eventsOn(k).forEach(e => items.push({ cls: e.kind === "schule" ? "schule" : "termin", label: (e.from ? e.from + " " : "") + e.title, ev: e.id }));
   state.checklists.forEach(l => { if (!l.template && !l.archived) l.tasks.forEach(t => { if (t.due === k) items.push({ cls: "task" + (t.completed ? " done" : ""), label: "Aufgabe: " + t.title, list: l.id }); }); });
   state.orders.forEach(o => { if (o.due === k) items.push({ cls: "order", label: "Auftrag: " + propLabel(getProp(o.propId)), order: o.id }); });
@@ -1182,6 +1233,7 @@ function parseRoute() {
     case "today": return { view: "today" };
     case "school": return { view: "school" };
     case "homework": return { view: "homework" };
+    case "time": return { view: "time", date: isKey(b) ? b : todayKey() };
     case "calendar": return { view: "calendar", mode: ["month", "week", "day"].includes(b) ? b : "month", date: isKey(c) ? c : todayKey() };
     case "props": return { view: "props" };
     case "prop": return getProp(b) ? { view: "prop", propId: b } : { view: "props" };
@@ -1245,6 +1297,7 @@ const NAV = [
   ["homework", "#/homework", "note", "Hausaufgaben", 0, "Schule"],
   ["report", "#/report", "book", "Berichtsheft", 0, "Schule"],
   ["today", "#/today", "today", "Heute", 1, "Arbeit"],
+  ["time", "#/time", "clock", "Zeiterfassung", 1, "Arbeit"],
   ["calendar", "#/calendar", "cal", "Kalender", 1, "Arbeit"],
   ["props", "#/props", "building", "Liegenschaften", 0, "Arbeit"],
   ["assistant", "#/assistant", "chat", "Assistent", 0, "Arbeit"],
@@ -1261,7 +1314,7 @@ function curNav(route) {
 function navLinks(cur, withGroups) {
   let last = "", html = "";
   NAV.forEach(([id, href, ic, label, mobile, group]) => {
-    if (withGroups && group !== last) { html += group ? `<div class="nav-group">${group}</div>` : `<div style="height:10px"></div>`; last = group; }
+    if (withGroups && group !== last) { html += group ? `<div class="nav-group">${group}</div>` : `<div class="nav-group" style="height:0;margin:10px 0 0"></div>`; last = group; }
     const count = id === "today" && dayStats().open ? `<span class="count">${dayStats().open}</span>` : id === "homework" && openHw().length ? `<span class="count">${openHw().length}</span>` : "";
     html += `<a href="${href}" class="${mobile ? "" : "desk"}" ${cur === id ? 'aria-current="page"' : ""}>${icon(ic, 19)}<span>${label}</span>${count}</a>`;
   });
@@ -1338,10 +1391,11 @@ function renderOverview() {
       </div>
       <div class="stack" style="gap:14px">
         <div class="sec-head"><h2 style="font-size:20px;display:flex;gap:8px;align-items:center">${icon("building", 20)} Arbeit</h2></div>
+        ${timeCard(true)}
         <section class="panel panel-pad" aria-labelledby="hEv">
           <div class="sec-head"><h2 id="hEv">Termine heute</h2><a class="link-btn" href="#/calendar/day/${k}">Kalender</a></div>
           ${evs.length ? evs.map(e => evLine(e, k)).join("") : `<p class="hint-text">Heute keine Termine.</p>`}
-          <div class="btn-row" style="margin-top:10px"><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("clock", 15)} Arbeitszeit & Einträge heute</button></div>
+          <div class="btn-row" style="margin-top:10px"><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("book", 15)} Einträge fürs Berichtsheft</button></div>
         </section>
         <section class="panel panel-pad" aria-labelledby="hOpen">
           <div class="sec-head"><h2 id="hOpen">Offene Aufgaben</h2><a class="link-btn" href="#/today">Heute</a></div>
@@ -1420,6 +1474,85 @@ function renderHomework() {
 }
 
 /* ==========================================================
+   Zeiterfassung
+   ========================================================== */
+function stampState() {
+  const d = state.days[todayKey()];
+  if (!d || !d.from) return "none";
+  if (d.to) return "out";
+  return d.breaks.some(b => !b.to) ? "pause" : "in";
+}
+function timeCard(compact = false) {
+  const k = todayKey(), d = state.days[k], st = stampState(), bal = saldo(startKey(), k);
+  const btn = (act, label, cls = "") => `<button type="button" class="btn ${cls}" data-act="${act}">${label}</button>`;
+  const btns = d && d.status ? `<a class="btn" href="#/time/${k}">Ändern</a>`
+    : st === "none" ? btn("t-in", `${icon("play", 15)} Einchecken`, "primary")
+    : st === "in" ? btn("t-pause", "Pause") + btn("t-out", "Auschecken", "primary")
+    : st === "pause" ? btn("t-resume", "Pause beenden", "primary") + btn("t-out", "Auschecken")
+    : btn("t-reopen", "Weiter arbeiten");
+  const status = d && d.status ? DAY_STATUS[d.status] : st === "none" ? (schoolDay(k) ? "Heute Berufsschule – zählt 8 Std." : "Noch nicht eingecheckt") : st === "out" ? `${d.from}–${d.to} Uhr` : `seit ${d.from} Uhr${st === "pause" ? " · in Pause" : ""}`;
+  return `
+    <section class="panel panel-pad stamp-card" aria-labelledby="hStamp">
+      <div class="sec-head"><h2 id="hStamp">Zeiterfassung heute</h2>${compact ? `<a class="link-btn" href="#/time">Öffnen</a>` : ""}</div>
+      <div class="now" id="liveWork">${fmtHM(liveMins(d))} Std.</div>
+      <p class="hint-text">${esc(status)}</p>
+      <div class="stamp-btns">${btns}</div>
+      ${compact ? `<p style="margin-top:10px">Stand: <strong class="${bal < 0 ? "minus" : "plus"}">${fmtHM(bal, true)} Std.</strong></p>` : ""}
+    </section>`;
+}
+function renderTime(route) {
+  const sel = route.date, k0 = todayKey(), d = state.days[sel] || sanitizeDay({});
+  const mDate = pkey(ui.timeMonth || sel), first = new Date(mDate.getFullYear(), mDate.getMonth(), 1), start = monday(first);
+  const bal = saldo(startKey(), k0);
+  const wk = sumRange(dkey(monday(new Date())), k0), mo = sumRange(dkey(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), k0);
+  const year = String(new Date().getFullYear());
+  const cnt = st => Object.entries(state.days).filter(([k, x]) => k.startsWith(year) && x.status === st && sollMins(k)).length;
+  let cells = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(w => `<div class="wd">${w}</div>`).join("");
+  for (let i = 0; i < 42; i++) {
+    const day = addDays(start, i), k = dkey(day), x = state.days[k];
+    if (i === 35 && day.getMonth() !== mDate.getMonth()) break;
+    const mark = holiday(k) ? "Feiertag" : x && x.status === "urlaub" ? "Urlaub" : x && x.status === "krank" ? "Krank" : x && x.status === "frei" ? "frei" : schoolDay(k) ? "Schule" : x && x.from && !x.to ? "läuft" : x && workMins(x) ? fmtHM(istMins(k) - sollMins(k), true) : "";
+    cells += `<button type="button" class="${day.getMonth() !== mDate.getMonth() ? "other" : ""} ${k === sel ? "sel" : ""} ${k === k0 ? "today" : ""}" data-act="goto" data-value="/time/${k}" aria-label="${fmtLong(k)}${mark ? ", " + mark : ""}"><span class="n">${day.getDate()}</span><span class="m ${mark.startsWith("−") ? "minus" : mark.startsWith("+") ? "plus" : "hint-text"}">${esc(mark)}</span></button>`;
+  }
+  const breaksText = d.breaks.map(b => `${b.from}-${b.to}`).join(", ");
+  return `
+    <div class="page-head"><div><h1>Zeiterfassung</h1><p class="lede">Gleitzeit, Soll 8 Std. Mo–Fr. Urlaub, Krank und Berufsschule zählen 8 Std. Über 6 Std. werden mindestens 30 Min. Pause abgezogen, über 9 Std. 45 Min.</p></div></div>
+    <div class="cols">
+      <div class="stack" style="gap:16px">
+        ${timeCard()}
+        <section class="panel panel-pad">
+          <div class="sec-head"><h2>${MONTHS[mDate.getMonth()]} ${mDate.getFullYear()}</h2><div class="btn-row">
+            <button type="button" class="btn small icon" data-act="t-month" data-value="-1" aria-label="Vorheriger Monat">${icon("left", 16)}</button>
+            <button type="button" class="btn small icon" data-act="t-month" data-value="1" aria-label="Nächster Monat">${icon("right", 16)}</button></div></div>
+          <div class="mini">${cells}</div>
+        </section>
+        <form class="panel panel-pad form" id="timeForm" data-date="${sel}" autocomplete="off">
+          <div class="field full sec-head" style="margin:0"><h2>${fmtLong(sel)}</h2><span class="hint-text">Soll ${fmtHM(sollMins(sel))} · Ist ${fmtHM(istMins(sel))}${holiday(sel) ? " · " + esc(holiday(sel)) : ""}</span></div>
+          <div class="field full"><label for="tmStatus">Art</label><select class="select" id="tmStatus">${Object.entries(DAY_STATUS).map(([v, l]) => `<option value="${v}" ${d.status === v ? "selected" : ""}>${v ? l : "Arbeit"}</option>`).join("")}</select></div>
+          <div class="field"><label for="tmFrom">Kommen</label><input class="input" id="tmFrom" type="time" value="${esc(d.from)}"></div>
+          <div class="field"><label for="tmTo">Gehen</label><input class="input" id="tmTo" type="time" value="${esc(d.to)}"></div>
+          <div class="field"><label for="tmBreaks">Pausen</label><input class="input" id="tmBreaks" value="${esc(breaksText)}" placeholder="12:00-12:30, 15:00-15:10"></div>
+          <div class="field"><label for="tmPause">oder Pause in Min.</label><input class="input" id="tmPause" type="number" min="0" max="600" step="5" value="${d.pause || ""}"></div>
+          <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Speichern</button>${state.days[sel] && (d.from || d.status) ? `<button type="button" class="btn danger" data-act="t-clear" data-value="${sel}">Zeiten löschen</button>` : ""}</div>
+        </form>
+        <form class="panel panel-pad form three" id="vacForm" autocomplete="off">
+          <div class="field full"><h2>Urlaub oder Krankheit für mehrere Tage</h2></div>
+          <div class="field"><label for="vFrom">Von</label><input class="input" id="vFrom" type="date" value="${esc(sel)}"></div>
+          <div class="field"><label for="vTo">Bis</label><input class="input" id="vTo" type="date" value="${esc(sel)}"></div>
+          <div class="field"><label for="vType">Art</label><select class="select" id="vType"><option value="urlaub">Urlaub</option><option value="krank">Krank</option><option value="frei">Frei / Gleittag</option></select></div>
+          <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn">Eintragen (Mo–Fr, ohne Feiertage)</button></div>
+        </form>
+      </div>
+      <aside class="panel panel-pad side time-side" aria-label="Stundenkonto">
+        <div class="block"><div class="cap">Stundenkonto seit ${fmtD(startKey())}</div><div class="saldo ${bal < 0 ? "minus" : "plus"}">${fmtHM(bal, true)} Std.</div></div>
+        <div class="block"><div class="cap">Diese Woche</div><div>Ist ${fmtHM(wk.ist)} / Soll ${fmtHM(wk.soll)} <strong class="${wk.ist - wk.soll < 0 ? "minus" : "plus"}">${fmtHM(wk.ist - wk.soll, true)}</strong></div></div>
+        <div class="block"><div class="cap">Dieser Monat</div><div>Ist ${fmtHM(mo.ist)} / Soll ${fmtHM(mo.soll)} <strong class="${mo.ist - mo.soll < 0 ? "minus" : "plus"}">${fmtHM(mo.ist - mo.soll, true)}</strong></div></div>
+        <div class="block"><div class="cap">${year}</div><div>${plural(cnt("urlaub"), "Urlaubstag", "Urlaubstage")} · ${plural(cnt("krank"), "Krankheitstag", "Krankheitstage")}</div></div>
+      </aside>
+    </div>`;
+}
+
+/* ==========================================================
    Heute
    ========================================================== */
 function renderToday() {
@@ -1438,14 +1571,13 @@ function renderToday() {
   const evs = eventsOn(k);
   return `
     <div class="page-head"><div><h1>Heute</h1><p class="lede">${fmtLong(k)}</p></div>
-      <div class="head-actions"><button type="button" class="btn" data-act="day" data-date="${k}">${icon("clock", 16)} Arbeitszeit & Berichtsheft</button></div></div>
+      <div class="head-actions"><button type="button" class="btn" data-act="day" data-date="${k}">${icon("book", 16)} Einträge fürs Berichtsheft</button></div></div>
     <div class="cols">
       <div>${groups || emptyState({ ic: "check", title: "Keine offenen Aufgaben", text: "Starte eine Vorlage oder lege über den Assistenten einen Auftrag an.", actions: `<a class="btn" href="#/templates">Vorlagen</a><a class="btn primary" href="#/assistant">Assistent</a>` })}</div>
       <aside class="panel panel-pad">
         <div class="sec-head"><h2>Termine</h2><button type="button" class="btn small" data-act="new-event" data-date="${k}">${icon("plus", 14)} Termin</button></div>
         ${evs.length ? evs.map(e => evLine(e, k)).join("") : `<p class="hint-text">Keine Termine.</p>`}
-        <div class="sec-head" style="margin-top:18px"><h2>Arbeitszeit</h2></div>
-        <p>${dd && dd.status ? DAY_STATUS[dd.status] : dd && workMins(dd) ? `${dd.from}–${dd.to} Uhr${dd.pause ? `, ${dd.pause} Min. Pause` : ""} = ${fmtH(workMins(dd))} Std.` : `<span class="hint-text">Noch nicht eingetragen.</span>`}</p>
+        <div style="margin-top:18px">${timeCard(true)}</div>
       </aside>
     </div>`;
 }
@@ -1717,7 +1849,7 @@ function calNav(mode, k) {
     </div>`;
 }
 function evChip(it, k, max) {
-  const attrs = it.ev ? `data-act="edit-event" data-value="${it.ev}" data-date="${k}"` : it.list ? `data-act="open-list" data-list="${it.list}"` : it.hw ? `data-act="goto" data-value="/homework"` : `data-act="day" data-date="${k}"`;
+  const attrs = it.ev ? `data-act="edit-event" data-value="${it.ev}" data-date="${k}"` : it.list ? `data-act="open-list" data-list="${it.list}"` : it.hw ? `data-act="goto" data-value="/homework"` : it.time ? `data-act="goto" data-value="/time/${k}"` : `data-act="day" data-date="${k}"`;
   return `<button type="button" class="ev ${it.cls}" ${attrs} title="${esc(it.label)}">${esc(max ? it.label.slice(0, max) : it.label)}</button>`;
 }
 function renderCalendar(route) {
@@ -1746,8 +1878,8 @@ function renderCalendar(route) {
     body = `<div class="cols"><section class="panel panel-pad">
       <div class="sec-head"><h2>Einträge</h2><button type="button" class="btn small" data-act="new-event" data-date="${k}">${icon("plus", 14)} Termin</button></div>
       ${items.length ? items.map(it => `<div class="item">${evChip(it, k)}</div>`).join("") : `<p class="hint-text">Keine Einträge.</p>`}</section>
-      <section class="panel panel-pad"><div class="sec-head"><h2>Arbeitszeit & Berichtsheft</h2><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("edit", 14)} Bearbeiten</button></div>
-      <p>${d && d.status ? DAY_STATUS[d.status] : d && workMins(d) ? `${d.from}–${d.to} Uhr, Pause ${d.pause} Min. = ${fmtH(workMins(d))} Std.` : `<span class="hint-text">Keine Arbeitszeit eingetragen.</span>`}</p>
+      <section class="panel panel-pad"><div class="sec-head"><h2>Arbeitszeit & Berichtsheft</h2><div class="btn-row"><a class="btn small" href="#/time/${k}">${icon("clock", 14)} Zeiten</a><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("edit", 14)} Einträge</button></div></div>
+      <p>${esc(timeSummary(k)) || `<span class="hint-text">Keine Arbeitszeit eingetragen.</span>`}</p>
       ${d && d.entries.length ? `<ul style="margin-top:8px">${d.entries.map(x => `<li>-${esc(x.text)}</li>`).join("")}</ul>` : ""}
       ${schoolMins(k) ? `<p class="hint-text" style="margin-top:8px">Berufsschule: ${fmtH(schoolMins(k))} Std.</p>` : ""}
       </section></div>`;
@@ -2058,7 +2190,7 @@ function renderSettings() {
 /* ==========================================================
    Rendern
    ========================================================== */
-const TITLES = { school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", report: "Berichtsheft", settings: "Einstellungen" };
+const TITLES = { time: "Zeiterfassung", school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", report: "Berichtsheft", settings: "Einstellungen" };
 function focusKey(el) { const d = el.dataset || {}; return [el.id, d.act, d.task, d.list, d.value, d.date, el.getAttribute("name"), el.getAttribute("href")].join("|"); }
 function findByKey(key) {
   if (!key || /^\|+$/.test(key)) return null;
@@ -2078,6 +2210,7 @@ function renderPage(route) {
     case "report": return renderReport(route);
     case "school": return renderTimetable();
     case "homework": return renderHomework();
+    case "time": return renderTime(route);
     case "settings": return renderSettings();
     default: return renderOverview();
   }
@@ -2088,6 +2221,7 @@ function render(opts = {}) {
   /* Bericht beim Verlassen oder Wochenwechsel als Entwurf sichern */
   if (ui.rep && ui.rep.dirty && $("#repForm") && (route.view !== "report" || route.n !== ui.rep.n)) saveReport();
   if (route.view !== "report") ui.rep = null;
+  if (route.view !== "time") ui.timeMonth = null;
   const app = $("#app"), active = document.activeElement;
   const keyBefore = app.contains(active) ? focusKey(active) : null;
   const caret = active && typeof active.selectionStart === "number" ? [active.selectionStart, active.selectionEnd] : null;
@@ -2320,12 +2454,7 @@ function openDayModal(k) {
     body: `
       <form id="dayForm" class="form" novalidate data-date="${k}">
         ${holiday(k) ? `<p class="field full chip imp" style="height:auto;padding:6px 10px">${esc(holiday(k))} (Feiertag)</p>` : ""}${ferien(k) ? `<p class="field full hint-text">${esc(ferien(k))}: keine Berufsschule, normaler Arbeitstag.</p>` : ""}
-        <div class="field full"><label for="dStatus">Tag</label><select class="select" id="dStatus">${Object.entries(DAY_STATUS).map(([v, l]) => `<option value="${v}" ${d.status === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="form three field full">
-          <div class="field"><label for="dFrom">Arbeit von</label><input class="input" id="dFrom" type="time" value="${esc(d.from)}"></div>
-          <div class="field"><label for="dTo">bis</label><input class="input" id="dTo" type="time" value="${esc(d.to)}"></div>
-          <div class="field"><label for="dPause">Pause (Min.)</label><input class="input" id="dPause" type="number" min="0" max="600" step="5" value="${d.pause || 0}"></div>
-        </div>
+        <div class="field full"><span class="lab">Arbeitszeit</span><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span>${esc(timeSummary(k)) || `<span class="hint-text">Keine Zeiten erfasst.</span>`}</span><a class="btn small" href="#/time/${k}" data-act="close-dialog">${icon("clock", 14)} Zeiterfassung</a></div></div>
         <div class="field full"><span class="lab">Fürs Berichtsheft gemerkt</span>
           ${logs.map(l => `<div class="log"><span class="grow">-${esc(l.text)}</span><button type="button" class="btn small icon quiet" data-act="log-del" data-value="${l.id}" data-date="${k}" aria-label="Entfernen: ${esc(l.text)}">${icon("x", 14)}</button></div>`).join("")}
           <textarea class="textarea" id="dEntries" rows="4" placeholder="Eigene Stichpunkte, einer pro Zeile – z. B. Post geöffnet und verteilt">${esc(d.entries.map(x => x.text).join("\n"))}</textarea></div>
@@ -2335,14 +2464,12 @@ function openDayModal(k) {
     foot: `<button type="button" class="btn" data-act="new-event" data-date="${k}" style="margin-right:auto">${icon("plus", 15)} Termin</button><a class="btn" href="#/calendar/day/${k}" data-act="close-dialog">Tagesansicht</a><button type="submit" form="dayForm" class="btn primary">Speichern</button>`
   });
 }
+const pruneDay = k => { const d = state.days[k]; if (d && !d.from && !d.to && !d.status && !d.entries.length && !d.school && !d.breaks.length && !d.pause) delete state.days[k]; };
 function saveDayForm(form) {
   const k = form.dataset.date, d = day(k);
-  d.status = $("#dStatus").value in DAY_STATUS ? $("#dStatus").value : "";
-  d.from = timeOr($("#dFrom").value); d.to = timeOr($("#dTo").value);
-  d.pause = Math.max(0, Math.min(600, Number($("#dPause").value) || 0));
   d.entries = bullet($("#dEntries").value).map(t => ({ id: uid(), text: t.replace(/^[-–•]\s*/, "").slice(0, 500) }));
   if ($("#dSchool")) d.school = $("#dSchool").value.trim().slice(0, 2000);
-  if (!d.from && !d.to && !d.status && !d.entries.length && !d.school) delete state.days[k];
+  pruneDay(k);
   if (ui.rep && weekRange(ui.rep.n).days.includes(k) && !ui.rep.saved) ui.rep = null;
   saveState(); closeDialog(); render(); toast("Tag gespeichert.");
 }
@@ -2452,6 +2579,24 @@ async function handleAction(act, el) {
     case "edit-list": if (list) openListModal(list.id); break;
     case "open-list": go(`/list/${listId}`); break;
     case "goto": closeDialog(); go(val); break;
+    case "t-in": case "t-pause": case "t-resume": case "t-out": case "t-reopen": {
+      const d = day(todayKey()), now = nowTime(), open = d.breaks.find(b => !b.to);
+      if (act === "t-in") Object.assign(d, { from: now, to: "", breaks: [], pause: 0, status: "" });
+      else if (act === "t-pause") d.breaks.push({ from: now, to: "" });
+      else if (act === "t-resume" && open) open.to = now < open.from ? open.from : now;
+      else if (act === "t-out") { if (open) open.to = now; d.to = now > d.from ? now : d.from; }
+      else if (act === "t-reopen") d.to = "";
+      saveState(); render();
+      toast({ "t-in": `Eingecheckt um ${now} Uhr.`, "t-pause": "Pause gestartet.", "t-resume": "Pause beendet.", "t-out": `Ausgecheckt. Heute ${fmtHM(workMins(d))} Std.`, "t-reopen": "Du bist wieder eingecheckt." }[act]);
+      break;
+    }
+    case "t-month": { const m = pkey(ui.timeMonth || ui.route.date); ui.timeMonth = dkey(new Date(m.getFullYear(), m.getMonth() + Number(val), 1)); render(); break; }
+    case "t-clear": {
+      const snap = snapshot(), d = day(val);
+      Object.assign(d, { from: "", to: "", breaks: [], pause: 0, status: "" }); pruneDay(val);
+      saveState(); render(); toastUndo("Zeiten gelöscht.", snap);
+      break;
+    }
     case "hw-new": ui.hwSubject = val; go("/homework"); setTimeout(() => $("#hwText")?.focus(), 60); break;
     case "hw-toggle": { const h = state.homework.find(x => x.id === val); if (h) { h.done = !h.done; saveState(); render(); } break; }
     case "hw-delete": {
@@ -2742,6 +2887,19 @@ document.addEventListener("submit", e => {
     });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
+  } else if (f.id === "timeForm") {
+    const k = f.dataset.date, d = day(k);
+    const breaks = $("#tmBreaks").value.split(/[,;\n]+/).map(x => x.trim().match(/^(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})$/)).filter(Boolean).map(m => ({ from: `${m[1].padStart(2, "0")}:${m[2]}`, to: `${m[3].padStart(2, "0")}:${m[4]}` })).filter(b => isTime(b.from) && isTime(b.to) && b.to > b.from);
+    Object.assign(d, { status: $("#tmStatus").value in DAY_STATUS ? $("#tmStatus").value : "", from: timeOr($("#tmFrom").value), to: timeOr($("#tmTo").value), breaks, pause: Math.max(0, Math.min(600, Number($("#tmPause").value) || 0)) });
+    if (d.status) Object.assign(d, { from: "", to: "", breaks: [], pause: 0 });
+    pruneDay(k); saveState(); render(); toast("Gespeichert.");
+  } else if (f.id === "vacForm") {
+    const from = keyOr($("#vFrom").value), to = keyOr($("#vTo").value), type = $("#vType").value;
+    if (!from || !to || to < from) { toast("Bitte einen gültigen Zeitraum wählen."); return; }
+    const snap = snapshot();
+    let n = 0;
+    for (let x = pkey(from); dkey(x) <= to; x = addDays(x, 1)) { const k = dkey(x), w = x.getDay(); if (w >= 1 && w <= 5 && !holiday(k)) { Object.assign(day(k), { status: type, from: "", to: "", breaks: [], pause: 0 }); n++; } }
+    saveState(); render(); toastUndo(`${plural(n, "Tag", "Tage")} als ${DAY_STATUS[type]} eingetragen.`, snap);
   } else if (f.id === "hwForm") {
     const text = $("#hwText").value.trim();
     if (!text) { toast("Bitte schreib die Hausaufgabe auf."); $("#hwText").focus(); return; }
@@ -2894,7 +3052,7 @@ function paletteItems(q) {
   const cmds = [
     ["Neuer Termin", "plus", () => openEventModal(null, {})],
     ["Auftrag anlegen (Assistent)", "chat", () => { startOrder(); saveState(); go("/assistant"); }],
-    ["Arbeitszeit heute eintragen", "clock", () => openDayModal(todayKey())],
+    ["Zeiterfassung öffnen", "clock", () => go("/time")],
     ["Berichtsheft dieser Woche", "book", () => go("/report")],
     ["Neue Checkliste", "plus", () => openListModal()],
     ...NAV.map(([, href, ic, label]) => [`Zu „${label}“`, ic, () => go(href.slice(1) || "/")])
@@ -3003,6 +3161,7 @@ function init() {
   if (mq.addEventListener) mq.addEventListener("change", onScheme); else if (mq.addListener) mq.addListener(onScheme);
   window.addEventListener("storage", e => { if (e.key === STORAGE_KEY && !ui.focus && !dialogOpen() && !ui.palette) { state = loadState(); render(); } });
   render({ top: true, initial: true });
+  setInterval(() => { const el = $("#liveWork"); if (el && stampState() !== "none") el.textContent = `${fmtHM(liveMins(state.days[todayKey()]))} Std.`; }, 20000);
   if (rolled) toast(`${plural(rolled, "wiederkehrende Checkliste wurde", "wiederkehrende Checklisten wurden")} für heute zurückgesetzt.`, { ms: 5000 });
 }
 init();
