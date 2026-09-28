@@ -542,6 +542,7 @@ legend.lab { padding: 0; margin-bottom: 5px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
+const APP_VERSION = "2026-09-28.4";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1331,7 +1332,7 @@ function renderRail(route) {
         <a href="#/school" class="mob" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 19)}<span>Schule</span></a>
         <button type="button" class="more-btn" data-act="more">${icon("more", 19)}<span>Mehr</span></button>
       </nav>
-      <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}${sync.session ? `<br><span id="syncState">${esc(syncLabel())}</span>` : ""}</div>
+      <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}<br>Version ${APP_VERSION}${sync.session ? `<br><span id="syncState">${esc(syncLabel())}</span>` : ""}</div>
     </aside>`;
 }
 function renderTopbar() {
@@ -3270,7 +3271,15 @@ async function signIn(create) {
     await firstSync();
     render();
   } catch (e) {
-    toast(/invalid login/i.test(e.message) ? "E-Mail oder Passwort falsch." : /not confirmed/i.test(e.message) ? "Bitte zuerst den Link in der Bestätigungs-Mail anklicken." : `Anmeldung fehlgeschlagen: ${e.message}`, { ms: 7000 });
+    const m = e.message || "";
+    toast(/invalid login/i.test(m) ? "E-Mail oder Passwort falsch."
+      : /not confirmed/i.test(m) ? "Bitte zuerst den Link in der Bestätigungs-Mail anklicken."
+      : /signups? not allowed|signup.*disabled/i.test(m) ? "Neue Konten sind in Supabase gerade ausgeschaltet. Bitte „Allow new users to sign up“ kurz einschalten."
+      : /already registered|already exists/i.test(m) ? "Für diese E-Mail gibt es schon ein Konto. Bitte auf „Anmelden“ klicken."
+      : /rate limit|too many/i.test(m) ? "Zu viele Versuche. Bitte ein paar Minuten warten."
+      : /password/i.test(m) ? `Passwort nicht erlaubt: ${m}`
+      : !e.status ? "Keine Verbindung zum Server. Bitte Internet prüfen und die Seite neu laden."
+      : `Anmeldung fehlgeschlagen: ${m}`, { ms: 9000 });
   }
 }
 async function signOut() {

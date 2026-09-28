@@ -1,5 +1,5 @@
 /* ArbeitsBuddy – Offline-Speicher. Bei jeder neuen Version CACHE hochzählen. */
-const CACHE = "arbeitsbuddy-v3";
+const CACHE = "arbeitsbuddy-v4";
 const FILES = ["./", "./index.html", "./arbeitsbuddy.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -8,12 +8,19 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-/* Erst aus dem Speicher antworten (schnell, offline), im Hintergrund aktualisieren */
+/* Seiten: immer zuerst aus dem Netz (neueste Version), offline aus dem Speicher.
+   Symbole und Manifest: aus dem Speicher, im Hintergrund aktualisieren. */
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;
+  const req = e.request;
+  if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
+  const page = req.mode === "navigate" || /\.html$|\/$/.test(new URL(req.url).pathname);
   e.respondWith(caches.open(CACHE).then(async c => {
-    const hit = await c.match(e.request, { ignoreSearch: true });
-    const net = fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; }).catch(() => hit);
+    if (page) {
+      try { const r = await fetch(req, { cache: "no-store" }); if (r.ok) c.put(req, r.clone()); return r; }
+      catch (err) { return (await c.match(req, { ignoreSearch: true })) || c.match("./arbeitsbuddy.html"); }
+    }
+    const hit = await c.match(req, { ignoreSearch: true });
+    const net = fetch(req).then(r => { if (r.ok) c.put(req, r.clone()); return r; }).catch(() => hit);
     return hit || net;
   }));
 });
