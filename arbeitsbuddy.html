@@ -706,80 +706,8 @@ const SCHOOL_END = "2027-07-30";
    Liegenschaften (Startdaten aus liegenschaften.csv)
    Kategorie;Firmennummer;Firma;VE;Liegenschaft;Sachbearbeiter
    ========================================================== */
-const FIRMEN = { 1: "Gregor Deurer GmbH & Co. KG", 2: "Dr. Markus Deurer, Vermietungen", 11: "Sonderbilanz Gregor Deurer GmbH & Co. KG", 80000: "Projekte Dr. Markus Deurer" };
-const FIRM_ORDER = [1, 2, 11];
-const PROPS_CSV = `F;1;10100;Sonnengrün - Fritz-Wendel-Str.;RM
-F;1;10110;Im Anger 7+9;AV
-F;1;10120;Gersthofen 1;RM
-F;1;10150;Lettenbach;AV
-F;1;10160;Poststraße 11, Haunstetten;CB/SM
-F;1;10170;Rathauspark;AV
-F;1;10180;Georgenstraße;AV
-F;1;10190;WA Park-Juwel;RM
-F;1;10200;Bismarkstraße;KW
-F;1;10210;Leitershoferstr. 104;KW
-F;1;10270;Alfonsstraße 22, Kazböckstr.;TG
-F;1;10280;Horgau, BHKW;CB
-F;11;10130;Stadtberger Straße 59 + 61;RM
-F;11;10140;Graf-Bothmer-Str., Stb. 71-75;KW
-F;11;10250;Stadtberger Straße 63;RM
-F;11;10290;Stadtberger Str. 65 a,b;AV
-F;11;10680;Stadtberger Str. 72 a,b;KW
-F;2;20100;Stadtberger Str. 64;CB/SM
-F;2;20240;Grasserstraße;CB
-F;2;20260;Stadtberger Str. 71 a,b,c, 1.BA;AV
-F;2;20280;Stadtberger Str. 67 a,b, 2.BA;AV
-F;2;20300;Stadtberger Str. 63 b,c;AV
-F;2;20510;Im Anger 7 + 9;AV
-F;2;20520;Gersthofen 1;RM
-F;2;20530;Uhland-/Alfonsstraße;CB
-F;2;20540;Herrenbach;KW/NN
-F;2;20550;Königsbrunn;AV/NN
-F;2;20560;Leitershofer Straße 106 b;BS
-F;2;20570;Stadtberger Straße 74;RM
-F;2;20580;Leonh.-Hausm.-Str. 29;SSc/AV
-F;2;20590;Leonh.-Hausm.-Str. 31;SSc/AV
-F;2;20600;Dinglerstraße 5;KW
-F;2;20610;Uhlandstraße 24;TG
-F;2;20620;Törlenstraße, Garmisch;BS
-F;2;20630;Am Eulenhorst 9c;BS
-F;2;20640;Peutinger Straße 22;KW
-F;2;20650;Seestraße, Schondorf;BS
-F;2;20660;Stadtberger Str. 57;RM
-F;2;20670;Rathauspark;AV
-F;2;20700;Lettenbach;AV
-F;2;20720;Stadtberger Str. 80 ½, ⅓;RM
-F;2;20730;Körnerstr. 30;KW
-F;2;20740;Gersthofen 2, Berliner Straße;RM
-F;2;20750;Gustav-Heinemann-Str. 4, 6, 8;CB
-F;2;20760;Stadtberger Str. 63 a;AV
-F;2;20790;Siegfried-Aufhäuser-Str. 3, 5, 7;RM
-F;2;20800;Otto-Schalk-Str. 4, 4a, 4b;RM
-F;2;20810;Paul-Heyse-Str. 4;KW
-F;2;20820;Stadtberger Str. 62;CB/SM
-F;2;20830;Lindenpark, Willi-Weise-Str. 6, 6a, 8, Otto-Sauler-Str. 27;KW
-F;2;20840;Reese 1, Familie-Einstein-Str.;TG
-F;2;20850;Deutschenbaurstr. 1;RM
-F;2;20860;Reese 2, Annegert-Fuchshuber-W. Reeseallee;TG
-F;2;20870;Harfenklang München;BS
-F;2;20880;Stadtberger Str. 67, 69;CB/SM
-F;2;20890;Stadtberger Str. 51, 59a;KW
-F;2;20900;Horgau Lebenswiese 1.BA;BS
-F;2;20910;Guttenbrunnstr. 22;CB/SM
-F;2;20920;Horgau 2, Gartenweg;CB
-F;2;20930;Irma-Uhrbach-Str., München (Demos);BS
-F;2;20950;Zauberwald Mchn. Lochhausen;BS
-F;2;20960;Donauwörth Hoch der Donau;BS
-F;2;20970;Stadtberger Str. 80;RM
-F;2;20980;Schwabmünchen;CB
-P;80000;80410;Donauwörth Hoch der Donau;CB
-P;80000;80420;Schwabmünchen;CB`;
-function seedProperties() {
-  return PROPS_CSV.split("\n").map(line => {
-    const [k, nr, ve, name, sb] = line.split(";");
-    return makeProp({ kategorie: k === "P" ? "Projekte" : "Firmen", firmaNr: nr, firma: FIRMEN[nr], ve, name, sb });
-  });
-}
+/* Liegenschaften werden nicht mitgeliefert, sondern per CSV importiert (Einstellungen bleiben lokal) */
+const FIRM_ORDER = ["1", "2", "11"];
 function makeProp(p = {}) {
   return { id: uid(), ve: "", name: "", ort: "", firma: "", firmaNr: "", kategorie: "Firmen", sb: "", notes: "", archived: false, ...p };
 }
@@ -854,7 +782,7 @@ const WEEK1 = {
 function seedState() {
   const settings = clone(DEFAULT_SETTINGS);
   return {
-    settings, checklists: [], history: [], properties: seedProperties(),
+    settings, checklists: [], history: [], properties: [],
     events: schoolEvents(settings.school), orders: [], days: {}, logs: [], reports: { 1: { ...WEEK1 } }, chat: [], homework: [],
     flags: { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true }
   };
@@ -960,7 +888,6 @@ function sanitizeState(raw) {
       hBetrieb: str(r.hBetrieb, 10), hSchule: str(r.hSchule, 10), done: !!r.done, savedAt: num(r.savedAt) ?? Date.now()
     };
   });
-  const hasProps = Array.isArray(s.properties);
   const flags = obj(s.flags);
   return {
     settings,
@@ -970,7 +897,7 @@ function sanitizeState(raw) {
       icon: str(h.icon, 20) || "clipboard", color: COLORS.includes(h.color) ? h.color : "blue", at: h.at,
       duration: num(h.duration), tasks: Number.isFinite(h.tasks) ? h.tasks : 0
     })).slice(0, 300),
-    properties: hasProps ? uniq(arr(s.properties).map(sanitizeProp)) : seedProperties(),
+    properties: uniq(arr(s.properties).map(sanitizeProp)),
     events: uniq(arr(s.events).map(sanitizeEvent)),
     orders: uniq(arr(s.orders).filter(o => o && Number.isFinite(o.at)).map(o => ({
       id: id(o.id), at: o.at, propId: str(o.propId, 80),
@@ -1694,13 +1621,13 @@ function buildPrintList(list) {
    Liegenschaften
    ========================================================== */
 function propGroups(list) {
-  const groups = FIRM_ORDER.map(nr => ({ title: `Firma ${nr} – ${FIRMEN[nr]}`, items: list.filter(p => p.kategorie !== "Projekte" && p.firmaNr === String(nr)) }));
-  const known = new Set(FIRM_ORDER.map(String));
-  const other = list.filter(p => p.kategorie !== "Projekte" && !known.has(p.firmaNr));
-  [...new Set(other.map(p => p.firmaNr))].forEach(nr => groups.push({ title: `Firma ${nr} – ${other.find(p => p.firmaNr === nr).firma}`, items: other.filter(p => p.firmaNr === nr) }));
-  groups.push({ title: `Projekte – ${FIRMEN[80000]}`, items: list.filter(p => p.kategorie === "Projekte") });
+  const firms = list.filter(p => p.kategorie !== "Projekte");
+  const nrs = [...new Set(firms.map(p => p.firmaNr))].sort((a, b) => (FIRM_ORDER.indexOf(a) + 1 || 99) - (FIRM_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b, "de", { numeric: true }));
+  const groups = nrs.map(nr => { const items = firms.filter(p => p.firmaNr === nr); return { title: `Firma ${nr} – ${items[0].firma}`, items }; });
+  const proj = list.filter(p => p.kategorie === "Projekte");
+  if (proj.length) groups.push({ title: `Projekte – ${proj[0].firma}`, items: proj });
   groups.forEach(g => g.items.sort((a, b) => a.ve.localeCompare(b.ve, "de", { numeric: true })));
-  return groups.filter(g => g.items.length);
+  return groups;
 }
 /* Fehlertolerante Suche: Groß/klein, Umlaute, "Str." = "Straße" */
 const normAddr = s => norm(s).replace(/strasse|str\./g, "str").replace(/[^a-z0-9]+/g, " ").trim();
@@ -1729,7 +1656,7 @@ function renderProps() {
         <label class="btn" style="gap:6px"><input type="checkbox" id="propArch" ${ui.showArchived ? "checked" : ""}> Archivierte</label>
       </div>
     </div>
-    <div id="propResults">${groups.length ? groups.map(g => `
+    <div id="propResults">${!state.properties.length ? emptyState({ ic: "building", title: "Noch keine Liegenschaften", text: "Importiere deine Liste als CSV (Semikolon getrennt: Kategorie;Firmennummer;Firma;VE;Liegenschaft;Sachbearbeiter). Sie bleibt nur auf deinem Gerät.", actions: `<button type="button" class="btn primary" data-act="import-csv">${icon("upload", 16)} CSV importieren</button>` }) : groups.length ? groups.map(g => `
       <div class="group-title"><h2>${esc(g.title)}</h2><span class="hint-text">${g.items.length}</span></div>
       <div class="table-wrap"><table class="table">
         <thead><tr><th style="width:80px">VE</th><th>Liegenschaft</th><th class="hide-s">Ort</th><th style="width:90px">Sachb.</th><th style="width:44px"><span class="sr">Karte</span></th></tr></thead>
@@ -1847,6 +1774,7 @@ const stepDef = s => { const [label, opts] = s.split("|"); return { label: label
 const propInfo = p => `${p.name}\nVE ${p.ve} · ${p.firma} (Firma ${p.firmaNr})\nSachbearbeiter: ${p.sb || "–"}${p.ort ? `\nOrt: ${p.ort}` : ""}`;
 
 function startOrder(p) {
+  if (!state.properties.length) { ui.flow = null; return say("Es sind noch keine Liegenschaften da. Importiere sie unter Liegenschaften → CSV importieren, dann kann ich Aufträge anlegen.", baseBtns()); }
   ui.flow = { type: "order", prop: null, i: 0, answers: [] };
   if (p) return pickProp(p);
   say("Für welche Liegenschaft ist der Auftrag? Tippe Straße, einen Teil des Namens oder die VE-Nummer.", [{ label: "Abbrechen", run: stopFlow }]);
@@ -2421,13 +2349,16 @@ function saveDayForm(form) {
 
 /* ---------- Liegenschaft ---------- */
 function openPropModal(id) {
-  const p = id ? getProp(id) : makeProp({ firmaNr: "2", firma: FIRMEN[2] });
+  const p = id ? getProp(id) : makeProp();
+  const firms = [...new Map(state.properties.map(x => [x.firmaNr, x.firma])).entries()];
   openDialog({
     title: id ? "Liegenschaft bearbeiten" : "Neue Liegenschaft",
     body: `
       <form id="propForm" class="form" novalidate data-id="${id || ""}">
         <div class="field"><label for="lVe">VE</label><input class="input" id="lVe" inputmode="numeric" maxlength="20" value="${esc(p.ve)}"></div>
-        <div class="field"><label for="lFirm">Firma</label><select class="select" id="lFirm">${Object.entries(FIRMEN).map(([nr, n]) => `<option value="${nr}" ${p.firmaNr === nr ? "selected" : ""}>${nr} – ${esc(n)}</option>`).join("")}</select></div>
+        <div class="field"><label for="lNr">Firmennummer</label><input class="input" id="lNr" list="firmList" maxlength="20" value="${esc(p.firmaNr)}"><datalist id="firmList">${firms.map(([nr, n]) => `<option value="${esc(nr)}">${esc(n)}</option>`).join("")}</datalist></div>
+        <div class="field full"><label for="lFirma">Firma</label><input class="input" id="lFirma" maxlength="120" value="${esc(p.firma)}"></div>
+        ${toggle("lProj", "Projekt", "Erscheint in der Gruppe „Projekte“ statt bei den Firmen.", p.kategorie === "Projekte")}
         <div class="field full"><label for="lName">Bezeichnung / Straße</label><input class="input" id="lName" maxlength="200" value="${esc(p.name)}"><p class="hint-text err" id="lNameErr" hidden>Bitte gib eine Bezeichnung ein.</p></div>
         <div class="field"><label for="lOrt">Ort</label><input class="input" id="lOrt" maxlength="120" value="${esc(p.ort)}" placeholder="z. B. 86157 Augsburg"></div>
         <div class="field"><label for="lSb">Sachbearbeiter (Kürzel)</label><input class="input" id="lSb" maxlength="30" value="${esc(p.sb)}"></div>
@@ -2440,8 +2371,8 @@ function openPropModal(id) {
 function savePropForm(form) {
   const name = $("#lName").value.trim();
   if (!name) { $("#lName").setAttribute("aria-invalid", "true"); $("#lNameErr").hidden = false; $("#lName").focus(); return; }
-  const nr = $("#lFirm").value;
-  const data = { ve: $("#lVe").value.trim(), name, ort: $("#lOrt").value.trim(), firmaNr: nr, firma: FIRMEN[nr], kategorie: nr === "80000" ? "Projekte" : "Firmen", sb: $("#lSb").value.trim(), notes: $("#lNotes").value.trim(), archived: $("#lArch").checked };
+  const nr = $("#lNr").value.trim();
+  const data = { ve: $("#lVe").value.trim(), name, ort: $("#lOrt").value.trim(), firmaNr: nr, firma: $("#lFirma").value.trim() || (state.properties.find(x => x.firmaNr === nr) || {}).firma || "", kategorie: $("#lProj").checked ? "Projekte" : "Firmen", sb: $("#lSb").value.trim(), notes: $("#lNotes").value.trim(), archived: $("#lArch").checked };
   const id = form.dataset.id;
   if (id) Object.assign(getProp(id), data); else { const p = makeProp(data); state.properties.push(p); saveState(); closeDialog(); go(`/prop/${p.id}`); return; }
   saveState(); closeDialog(); render(); toast("Liegenschaft gespeichert.");
@@ -2717,7 +2648,7 @@ function importCsv(file) {
     const next = clone(state.properties);
     rows.slice(1).forEach(r => {
       const g = i => (i >= 0 ? r[i] || "" : "");
-      const data = { kategorie: g(ix.kat) || "Firmen", firmaNr: g(ix.nr), firma: g(ix.firma) || FIRMEN[g(ix.nr)] || "", ve: g(ix.ve), name: g(ix.name), sb: g(ix.sb) };
+      const data = { kategorie: g(ix.kat) || "Firmen", firmaNr: g(ix.nr), firma: g(ix.firma), ve: g(ix.ve), name: g(ix.name), sb: g(ix.sb) };
       if (!data.name) return;
       if (ix.ort >= 0 && g(ix.ort)) data.ort = g(ix.ort);
       const ex = next.find(p => p.ve === data.ve && p.firmaNr === data.firmaNr);
