@@ -715,7 +715,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.10";
+const APP_VERSION = "2026-09-28.11";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1059,7 +1059,7 @@ function sanitizeState(raw) {
     reports[n] = {
       betrieb: str(r.betrieb, 6000), vorgangTitel: str(r.vorgangTitel, 200), vorgang: str(r.vorgang, 4000), schule: str(r.schule, 4000),
       hBetrieb: str(r.hBetrieb, 10), hSchule: str(r.hSchule, 10), done: !!r.done, savedAt: num(r.savedAt) ?? Date.now(),
-      sick: arr(r.sick).filter(isKey).slice(0, 7), nr: Number.isInteger(r.nr) && r.nr > 0 && r.nr < 1000 ? r.nr : 0, from: keyOr(r.from), to: keyOr(r.to)
+      sick: arr(r.sick).filter(isKey).slice(0, 7), archived: num(r.archived), nr: Number.isInteger(r.nr) && r.nr > 0 && r.nr < 1000 ? r.nr : 0, from: keyOr(r.from), to: keyOr(r.to)
     };
   });
   const flags = obj(s.flags);
@@ -2590,7 +2590,24 @@ function renderReport(route) {
   const n = route.n, r = repDraft(n), w = weekRange(n), head = repHead(n, r), cur = Math.max(1, weekNo(todayKey()));
   const saved = Object.keys(state.reports).map(Number).sort((a, b) => b - a);
   const weekOrders = state.orders.filter(o => w.days.includes(dkey(o.at)));
-  const tab = ui.repTab === "pick" ? "pick" : "edit";
+  const tab = ["pick", "archive"].includes(ui.repTab) ? ui.repTab : "edit";
+  const archived = Object.keys(state.reports).map(Number).filter(i => state.reports[i].archived).sort((a, b) => b - a);
+  const archiveTab = `
+    <section class="panel panel-pad">
+      <div class="sec-head"><h2>Archiv</h2>${archived.length ? `<button type="button" class="btn small" data-act="rep-pdf-arch">${icon("print", 14)} Alle als ein PDF</button>` : ""}</div>
+      ${archived.length ? `<div class="table-wrap"><table class="table rep-table"><thead><tr><th>Nr.</th><th>Zeitraum</th><th>Archiviert</th><th></th></tr></thead><tbody>${archived.map(i => { const h = repHead(i, state.reports[i]); return `<tr><td>${h.nr}</td><td>${fmtD(h.from)} – ${fmtD(h.to)}</td><td>${fmtD(dkey(state.reports[i].archived))}</td>
+        <td class="btn-row" style="justify-content:flex-end;gap:6px"><button type="button" class="btn small" data-act="rep-open" data-value="${i}">Ansehen</button><button type="button" class="btn small" data-act="rep-pdf" data-value="${i}">PDF</button><button type="button" class="btn small" data-act="rep-unarchive" data-value="${i}">Zurückholen</button></td></tr>`; }).join("")}</tbody></table></div>`
+        : `<p class="hint-text">Noch nichts im Archiv. Fertige Nachweise unten im Editor mit „Ins Archiv“ ablegen.</p>`}
+    </section>`;
+  const archivedView = `
+    <div class="edit-grid">
+      <section class="panel panel-pad stack" style="gap:12px">
+        <div class="sec-head"><h2>Im Archiv</h2><span class="chip ok">seit ${fmtD(dkey(r.archived || Date.now()))}</span></div>
+        <p class="hint-text">Dieser Nachweis ist fertig und abgelegt. Zum Ändern zuerst zurückholen.</p>
+        <div class="btn-row"><button type="button" class="btn primary" data-act="rep-pdf">${icon("print", 15)} PDF speichern</button><button type="button" class="btn" data-act="rep-print">Drucken</button><button type="button" class="btn" data-act="rep-unarchive">Zurückholen und bearbeiten</button></div>
+      </section>
+      <div><div class="sec-head"><h2>Vorschau (A4)</h2><span class="hint-text">Gesamt ${esc(sumH(r)) || "0"} Std.</span></div><div class="sheet-wrap" id="sheetPreview">${ihkSheet(n, r)}</div></div>
+    </div>`;
   const opts = [];
   for (let i = Math.max(cur + 1, ...saved, 1); i >= 1; i--) opts.push(`<option value="${i}" ${i === n ? "selected" : ""}>Nr. ${i} · ${fmtDs(weekRange(i).from)}–${fmtD(weekRange(i).to)}${state.reports[i]?.done ? " ✓" : ""}</option>`);
   const sick = new Set(r.sick || []);
@@ -2616,7 +2633,7 @@ function renderReport(route) {
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="rep-save">Speichern</button>
             <button type="button" class="btn" data-act="rep-pdf">${icon("print", 15)} PDF speichern</button>
-            <button type="button" class="btn" data-act="rep-done">${r.done ? "Wieder als Entwurf" : "Als fertig markieren"}</button>
+            <button type="button" class="btn" data-act="rep-archive">${icon("archive", 15)} Fertig · ins Archiv</button>
             <button type="button" class="btn" data-act="rep-regen">${icon("reset", 15)} Nur echte Einträge</button>
             ${r.saved ? `<button type="button" class="btn danger" data-act="rep-delete">Löschen</button>` : ""}
           </div>
@@ -2630,7 +2647,7 @@ function renderReport(route) {
   const maxN = Math.max(cur + 1, ...saved, 1), rows = [];
   for (let i = maxN; i >= 1; i--) {
     const rr = state.reports[i], h = repHead(i, rr || {});
-    rows.push(`<tr ${i === n ? 'class="sel"' : ""}><td>${h.nr}${h.nr !== i ? ` <span class="hint-text">(Woche ${i})</span>` : ""}</td><td>KW ${weekRange(i).kw}</td><td>${fmtD(h.from)} – ${fmtD(h.to)}</td><td>${rr ? `<span class="chip ${rr.done ? "ok" : "accent"}">${rr.done ? "Fertig" : "Entwurf"}</span>` : `<span class="hint-text">leer</span>`}</td>
+    rows.push(`<tr ${i === n ? 'class="sel"' : ""}><td>${h.nr}${h.nr !== i ? ` <span class="hint-text">(Woche ${i})</span>` : ""}</td><td>KW ${weekRange(i).kw}</td><td>${fmtD(h.from)} – ${fmtD(h.to)}</td><td>${rr ? `<span class="chip ${rr.done ? "ok" : "accent"}">${rr.archived ? "Archiv" : rr.done ? "Fertig" : "Entwurf"}</span>` : `<span class="hint-text">leer</span>`}</td>
       <td class="btn-row" style="justify-content:flex-end;gap:6px"><button type="button" class="btn small" data-act="rep-open" data-value="${i}">Öffnen</button>${rr ? `<button type="button" class="btn small" data-act="rep-pdf" data-value="${i}">PDF</button>` : ""}</td></tr>`);
   }
   const pickTab = `
@@ -2667,10 +2684,10 @@ function renderReport(route) {
         <a class="btn icon" href="#/report/${n + 1}" aria-label="Nächste Woche">${icon("right", 18)}</a>
         ${n !== cur ? `<a class="btn" href="#/report/${cur}">Diese Woche</a>` : ""}
       </div>
-      <span class="chip ${r.done ? "ok" : r.saved ? "accent" : ""}">Nr. ${head.nr} · ${r.done ? "Fertig" : r.saved ? "Entwurf gespeichert" : "Noch nicht gespeichert"}</span>
+      <span class="chip ${r.done ? "ok" : r.saved ? "accent" : ""}">Nr. ${head.nr} · ${r.archived ? "Im Archiv" : r.done ? "Fertig" : r.saved ? "Entwurf gespeichert" : "Noch nicht gespeichert"}</span>
     </div>
-    <div class="tabs" role="group" aria-label="Bereich" style="margin-bottom:16px"><button type="button" data-act="rep-tab" data-value="edit" aria-pressed="${tab === "edit"}">Nachweis</button><button type="button" data-act="rep-tab" data-value="pick" aria-pressed="${tab === "pick"}">Auswahl: Nr. &amp; Datum</button></div>
-    ${tab === "pick" ? pickTab : editTab}`;
+    <div class="tabs" role="group" aria-label="Bereich" style="margin-bottom:16px"><button type="button" data-act="rep-tab" data-value="edit" aria-pressed="${tab === "edit"}">Nachweis</button><button type="button" data-act="rep-tab" data-value="pick" aria-pressed="${tab === "pick"}">Auswahl: Nr. &amp; Datum</button><button type="button" data-act="rep-tab" data-value="archive" aria-pressed="${tab === "archive"}">Archiv${archived.length ? ` (${archived.length})` : ""}</button></div>
+    ${tab === "pick" ? pickTab : tab === "archive" ? archiveTab : r.archived ? archivedView : editTab}`;
 }
 function readRepForm() {
   const r = ui.rep;
@@ -2682,7 +2699,7 @@ function saveReport(done) {
   const r = readRepForm();
   if (!r) return;
   if (typeof done === "boolean") r.done = done;
-  state.reports[r.n] = { betrieb: r.betrieb.trim(), hBetrieb: r.hBetrieb, hSchule: r.hSchule, vorgangTitel: r.vorgangTitel.trim(), vorgang: r.vorgang.trim(), schule: r.schule.trim(), done: !!r.done, savedAt: Date.now(), sick: [...(r.sick || [])], nr: r.nr || 0, from: r.from || "", to: r.to || "" };
+  state.reports[r.n] = { betrieb: r.betrieb.trim(), hBetrieb: r.hBetrieb, hSchule: r.hSchule, vorgangTitel: r.vorgangTitel.trim(), vorgang: r.vorgang.trim(), schule: r.schule.trim(), done: !!r.done, savedAt: Date.now(), archived: r.archived || null, sick: [...(r.sick || [])], nr: r.nr || 0, from: r.from || "", to: r.to || "" };
   r.saved = true; r.dirty = false;
   saveState();
 }
@@ -2706,11 +2723,6 @@ function renderSettings() {
           <div class="field"><label for="pSw">Verwaltungssoftware <span class="hint-text">– für Vorschläge</span></label><input class="input" id="pSw" value="${esc(p.software)}" placeholder="z. B. Immotion"></div>
         </div>
         <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button></div>
-      </form>
-      <form class="setting" id="stepsForm">
-        <h3>Auftragsschritte</h3><p>Fragen, die der Assistent beim Anlegen eines Auftrags stellt. Eine pro Zeile. Auswahl-Buttons mit „Frage | Option, Option“.</p>
-        <textarea class="textarea" id="stepsText" rows="6">${esc(st.orderSteps.join("\n"))}</textarea>
-        <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="steps-default">Standard</button></div>
       </form>
       <section class="setting">
         <h3>Darstellung und Bedienung</h3><p>„System“ folgt deinem Gerät.</p>
@@ -3417,6 +3429,14 @@ async function handleAction(act, el) {
     /* Berichtsheft */
     case "rep-save": saveReport(); render(); toast("Bericht gespeichert."); break;
     case "rep-done": saveReport(!ui.rep.done); render(); toast(ui.rep.done ? "Als fertig markiert." : "Wieder als Entwurf."); break;
+    case "rep-archive": readRepForm(); ui.rep.archived = Date.now(); saveReport(true); render(); toast(`Nachweis Nr. ${repHead(ui.rep.n, ui.rep).nr} ist im Archiv.`); break;
+    case "rep-unarchive": {
+      const i = val ? Number(val) : ui.rep.n, r = state.reports[i];
+      if (!r) break;
+      r.archived = null; r.done = false; if (ui.rep && ui.rep.n === i) Object.assign(ui.rep, { archived: null, done: false });
+      saveState(); render(); toast("Aus dem Archiv geholt, wieder bearbeitbar.");
+      break;
+    }
     case "rep-print": saveReport(); printReport(); break;
     case "rep-gen": {
       readRepForm();
@@ -3450,13 +3470,14 @@ async function handleAction(act, el) {
     case "run-copy": { const r = state.flowRuns.find(x => x.id === val); const x = r && runSteps(r).find(y => y.id === el.dataset.step); if (x) copyText(x.copy); break; }
     case "run-finish": { const r = state.flowRuns.find(x => x.id === val); if (r && runSteps(r).every(x => r.checks[x.id])) finishRun(r); break; }
     case "run-reopen": { const r = state.flowRuns.find(x => x.id === val); if (r) { r.doneAt = null; saveState(); render(); } break; }
-    case "rep-open": ui.repTab = "edit"; go(`/report/${val}`); break;
+    case "rep-open": ui.repTab = "edit"; ui.rep = null; go(`/report/${val}`); render(); break;
     case "rep-head-reset": readRepForm(); Object.assign(ui.rep, { nr: 0, from: "", to: "" }); saveReport(); render(); toast("Nummer und Zeitraum wieder automatisch."); break;
     case "rep-pdf": {
       if (val) { const i = Number(val); savePdf([[i, state.reports[i]]]); break; }
       saveReport(); savePdf([[ui.rep.n, state.reports[ui.rep.n]]]);
       break;
     }
+    case "rep-pdf-arch": savePdf(Object.keys(state.reports).map(Number).filter(i => state.reports[i].archived).sort((a, b) => a - b).map(i => [i, state.reports[i]])); break;
     case "rep-pdf-all": savePdf(Object.keys(state.reports).map(Number).sort((a, b) => a - b).map(i => [i, state.reports[i]])); break;
     case "rep-regen": {
       const n = ui.rep.n, fresh = collectWeek(n);
@@ -3482,7 +3503,6 @@ async function handleAction(act, el) {
     }
 
     /* Einstellungen */
-    case "steps-default": state.settings.orderSteps = [...DEFAULT_STEPS]; saveState(); render(); toast("Standard-Schritte wiederhergestellt."); break;
     case "school-reseed": {
       if (!await confirmDialog({ title: "Berufsschultage neu eintragen?", text: "Alle Berufsschultermine ab heute werden mit den aktuellen Zeiten neu erzeugt (Do + Fr, ohne Ferien und Feiertage). Frühere Termine bleiben.", confirm: "Neu eintragen" })) break;
       const snap = snapshot();
