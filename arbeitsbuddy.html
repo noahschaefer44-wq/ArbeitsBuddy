@@ -558,6 +558,16 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .summary span { color: var(--muted); }
 
 /* ---------- Druck (Checkliste) ---------- */
+.auth { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(900px 500px at 15% 0%, var(--accent-soft), transparent 70%), var(--bg); }
+.auth-card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-lg); padding: 32px 28px; }
+.auth-brand { margin-bottom: 22px; }
+.auth-brand .logo-word { color: var(--ink); }
+.auth-brand .logo-word b { color: var(--accent-2); }
+.auth h1 { font-size: 1.6rem; margin-bottom: 8px; }
+.auth .lede { margin-bottom: 20px; }
+.auth-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.auth-form .btn { width: 100%; justify-content: center; }
+.auth .hint-text { margin-top: 14px; }
 #print-root { display: none; }
 .pr { color: #000; font: 11pt/1.4 Arial, sans-serif; }
 .pr h1 { font-size: 18pt; margin-bottom: 4pt; letter-spacing: 0; }
@@ -685,7 +695,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.5";
+const APP_VERSION = "2026-09-28.6";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -881,21 +891,11 @@ const SORTS = ["updated", "alpha", "favorite", "progress"];
 const DAY_STATUS = { "": "Betrieb", urlaub: "Urlaub", krank: "Krank", frei: "Frei / Gleittag" };
 const DEFAULT_STEPS = ["Was ist zu tun? (Beschreibung)", "Dringlichkeit | Normal, Dringend, Notfall", "Gewünschter Termin (TT.MM.JJJJ)", "Ansprechpartner / Firma", "Notiz"];
 /* Berufsschule: Do 8:45–16:00, Fr 8:00–13:45 (Pausen werden nicht abgezogen) */
-/* Stundenplan (Raum B108), Fächer als Kürzel; bei zwei Lehrkräften steht die erste */
-const L = (from, to, subject, teacher) => ({ from, to, subject, teacher, room: "B108" });
-const DEFAULT_SCHOOL = {
-  4: { from: "08:45", to: "16:00", lessons: [
-    L("08:45", "09:30", "IWi", "Herr Miess"), L("09:45", "10:30", "FU-WiB", "Frau Lukas"),
-    L("10:30", "12:15", "KSC", "Frau Schmiedbauer"), L("12:15", "13:00", "D", "Frau Gebhart"),
-    L("13:45", "16:00", "IWi", "Frau Gaugenrieder")] },
-  5: { from: "08:00", to: "13:45", lessons: [
-    L("08:00", "08:45", "IWi", "Frau Gebhart"), L("08:45", "09:30", "PuG", "Herr Hummel"),
-    L("09:45", "10:30", "IWi", "Frau Gaugenrieder"), L("10:30", "11:15", "E", "Frau Sailer"),
-    L("11:30", "13:00", "IWi", "Frau Gaugenrieder"), L("13:00", "13:45", "IWi", "Herr Miess")] }
-};
+/* Stundenplan startet leer und wird unter Einstellungen gepflegt */
+const DEFAULT_SCHOOL = { 4: { from: "08:00", to: "15:00", lessons: [] }, 5: { from: "08:00", to: "13:00", lessons: [] } };
 const DEFAULT_SETTINGS = {
   theme: "system", animations: true, confirmDelete: true, autoRepeat: true, sort: "updated",
-  profile: { name: "Noah Schäfer", firma: "Gregor Deurer GmbH & Co. KG", abteilung: "Hausverwaltung", start: "2026-09-01" },
+  profile: { name: "", firma: "", abteilung: "", start: "" },
   orderSteps: DEFAULT_STEPS, school: DEFAULT_SCHOOL
 };
 
@@ -930,18 +930,12 @@ function schoolEvents(school) {
   return out;
 }
 
-/* Nachweis Nr. 1 so, wie er in der Vorlage (Woche_1.docx) bereits ausgefüllt ist */
-const WEEK1 = {
-  betrieb: ["Kennenlernen der Mitarbeiter und des betrieblichen Umfeldes", "Einarbeitung in die betrieblichen Abläufe und Arbeitsprozesse", "Einführung in die betreuten Immobilien und Kennenlernen verschiedener Objekte", "Arbeiten mit der Immobilienverwaltungssoftware Immotion", "Einarbeitung in die Erstellung und Bearbeitung von Aufträgen in Immotion", "Erstellung von Instandhaltungsaufträgen", "Versand von Aufträgen per Email an Auftragnehmer und entsprechende Mieter"].map(t => "-" + t).join("\n"),
-  vorgangTitel: "Brief vorbereiten für den Versand",
-  vorgang: ["Brief auf korrektem Briefpapier ausdrucken", "Dokument auf Vollständigkeit prüfen", "Brief im korrekten Zick-Zack-Falz falten", "Brief mit Briefkopf nach vorne kuvertieren", "Brief schließen und ins Fach für den Postausgang legen"].join("\n"),
-  schule: "Berufsschule erst ab 17.09.2026", hBetrieb: "", hSchule: "", done: true, savedAt: Date.now()
-};
 function seedState() {
   const settings = clone(DEFAULT_SETTINGS);
+  settings.profile.start = todayKey();
   return {
     settings, checklists: [], history: [], properties: [],
-    events: schoolEvents(settings.school), orders: [], days: {}, logs: [], reports: { 1: { ...WEEK1 } }, chat: [], homework: [],
+    events: [], orders: [], days: {}, logs: [], reports: {}, chat: [], homework: [],
     flags: { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true }
   };
 }
@@ -1029,7 +1023,7 @@ function sanitizeState(raw) {
     confirmDelete: typeof rs.confirmDelete === "boolean" ? rs.confirmDelete : true,
     autoRepeat: typeof rs.autoRepeat === "boolean" ? rs.autoRepeat : true,
     sort: SORTS.includes(rs.sort) ? rs.sort : "updated",
-    profile: { name: str(pr.name ?? dp.name, 80), firma: str(pr.firma ?? dp.firma, 120), abteilung: str(pr.abteilung ?? dp.abteilung, 80), start: keyOr(pr.start) || dp.start },
+    profile: { name: str(pr.name ?? dp.name, 80), firma: str(pr.firma ?? dp.firma, 120), abteilung: str(pr.abteilung ?? dp.abteilung, 80), start: keyOr(pr.start) || todayKey() },
     orderSteps: arr(rs.orderSteps).map(x => str(x, 200)).filter(Boolean).slice(0, 20),
     school: sanitizeSchool(rs.school)
   };
@@ -1087,25 +1081,6 @@ function loadState() {
     }
   } catch (e) { /* Speicher leer oder nicht lesbar: neu beginnen */ }
   if (!st) return seedState();
-  /* Einmalig bei bestehenden Daten: Berufsschultage eintragen */
-  /* Einmalig: ausgeschriebene Fächer auf Kürzel umstellen, fehlende Lehrkräfte ergänzen */
-  if (!st.flags.subjectCodes) {
-    const code = { "Immobilienwirtschaft": "IWi", "Kaufmännische Steuerung und Controlling": "KSC", "Politik und Gesellschaft": "PuG", "Englisch": "E", "Deutsch": "D" };
-    const teacher = { SbK: "Frau Schmiedbauer", SaD: "Frau Sailer" };
-    [4, 5].forEach(d => st.settings.school[d].lessons.forEach(l => { l.subject = code[l.subject] || l.subject; l.teacher = teacher[l.teacher] || l.teacher; }));
-    st.homework.forEach(h => { h.subject = code[h.subject] || h.subject; });
-    st.flags.subjectCodes = true;
-  }
-  /* Einmalig: Stundenplan eintragen, falls noch keiner gepflegt ist */
-  if (!st.flags.timetable) {
-    [4, 5].forEach(d => { if (!st.settings.school[d].lessons.length) st.settings.school[d].lessons = clone(DEFAULT_SCHOOL[d].lessons); });
-    st.flags.timetable = true;
-  }
-  if (!st.flags.schoolSeeded) {
-    st.events.push(...schoolEvents(st.settings.school));
-    if (!st.reports[1]) st.reports[1] = { ...WEEK1 };
-    st.flags.schoolSeeded = true;
-  }
   return st;
 }
 function saveState(localOnly = false) {
@@ -1652,7 +1627,7 @@ function renderTimetable() {
     return `<section class="panel panel-pad"><div class="sec-head"><h2>${WDL[d]}</h2><span class="hint-text">${st[d].from}–${st[d].to} Uhr</span></div>${rows || `<p class="hint-text">Noch keine Stunden eingetragen.</p>`}</section>`;
   };
   return `
-    <div class="page-head"><div><p class="eyebrow">Schule · Stundenplan</p><h1>Was heute <span class="hl">dran ist.</span></h1><p class="lede">Berufsschule jeden Donnerstag und Freitag, Raum B108.${ns ? ` Nächster Schultag: ${fmtLong(ns)}.` : ""}</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">Schule · Stundenplan</p><h1>Was heute <span class="hl">dran ist.</span></h1><p class="lede">Berufsschule am Donnerstag und Freitag.${ns ? ` Nächster Schultag: ${fmtLong(ns)}.` : ""}</p></div></div>
     ${schoolTabs("school")}
     <div class="tt">${col(4)}${col(5)}</div>
     <form class="setting" id="schoolForm" style="margin-top:18px">
@@ -2123,7 +2098,7 @@ function renderCalendar(route) {
    ========================================================== */
 let chatBtns = [];
 const say = (text, btns) => { state.chat.push({ from: "bot", text }); state.chat = state.chat.slice(-200); chatBtns = btns || []; };
-const HELP = "Ich helfe dir bei Aufträgen, Aufgaben und Fragen zu Liegenschaften. Probier z. B.:\n• „Auftrag anlegen“\n• „Welche Firma hat 20630?“\n• „Was betreut RM?“\n• „Stadtberger Str.“\n• „Checkliste abarbeiten“\n• „Termine heute“";
+const HELP = "Ich helfe dir bei Aufträgen, Aufgaben und Fragen zu Liegenschaften. Probier z. B.:\n• „Auftrag anlegen“\n• „Welche Firma hat 10100?“\n• „Was betreut AB?“\n• „Hauptstr.“\n• „Checkliste abarbeiten“\n• „Termine heute“";
 const baseBtns = () => [
   { label: "Auftrag anlegen", run: () => startOrder() },
   { label: "Checkliste abarbeiten", run: () => pickList() },
@@ -2444,7 +2419,32 @@ function renderPage(route) {
     default: return renderOverview();
   }
 }
+/* Ohne Anmeldung ist nur dieser Bildschirm sichtbar */
+function renderAuth() {
+  const root = document.documentElement;
+  root.dataset.theme = resolveTheme();
+  if (ui.palette) closePalette();
+  closeDialog();
+  document.title = "Anmelden – Azubino";
+  if ($("#authForm")) return;
+  $("#app").innerHTML = `
+    <main class="auth" id="main">
+      <div class="auth-card">
+        <div class="auth-brand">${logo("lga")}</div>
+        <h1>Willkommen bei <span class="hl">Azubino.</span></h1>
+        <p class="lede">Dein Begleiter für Ausbildung und Büroalltag. Melde dich an oder erstelle ein kostenloses Konto. Deine Daten sind nur für dich sichtbar.</p>
+        <form class="form auth-form" id="authForm" autocomplete="on">
+          <div class="field"><label for="syEmail">E-Mail</label><input class="input" id="syEmail" type="email" autocomplete="username" required></div>
+          <div class="field"><label for="syPass">Passwort</label><input class="input" id="syPass" type="password" autocomplete="current-password" minlength="6" required></div>
+          <button type="submit" class="btn primary">Anmelden</button>
+          <button type="button" class="btn" data-act="sync-signup">Neues Konto erstellen</button>
+        </form>
+        <p class="hint-text">Passwort mit mindestens 6 Zeichen. Deine Daten werden verschlüsselt übertragen und bei Supabase (Server in Frankfurt) gespeichert.</p>
+      </div>
+    </main>`;
+}
 function render(opts = {}) {
+  if (!sync.session) { renderAuth(); return; }
   const route = ui.route = parseRoute();
   if (route.view === "list") { if (ui.lastList !== route.listId) { resetListUi(); ui.lastList = route.listId; } } else ui.lastList = null;
   /* Bericht beim Verlassen oder Wochenwechsel als Entwurf sichern */
@@ -3125,7 +3125,7 @@ document.addEventListener("submit", e => {
     });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
-  } else if (f.id === "syncForm") {
+  } else if (f.id === "syncForm" || f.id === "authForm") {
     signIn(false);
   } else if (f.id === "timeForm") {
     const k = f.dataset.date, d = day(k);
@@ -3357,6 +3357,7 @@ function paletteKeys(e) {
 document.addEventListener("keydown", e => {
   const a = document.activeElement, tag = (a && a.tagName || "").toLowerCase();
   const typing = ["input", "textarea", "select"].includes(tag) || (a && a.isContentEditable);
+  if (!sync.session) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (ui.palette) closePalette(); else if (!dialogOpen()) openPalette(); return; }
   if (ui.palette) { paletteKeys(e); return; }
   if (dialogOpen()) {
@@ -3391,6 +3392,7 @@ const SB = { url: "https://vigfdkcqqakuxlxravdl.supabase.co", key: "sb_publishab
 const SYNC_KEY = "arbeitsbuddy_sync", BACKUP_KEY = "arbeitsbuddy_backup";
 const DEVICE = /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) ? "Handy" : "PC";
 let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) { return {}; } })();
+if (sync.session && !sync.owner) sync.owner = sync.session.user.id;
 let syncBusy = false, pushTimer = null, syncStatus = "";
 const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* ohne Speicher */ } };
 function syncLabel() {
@@ -3423,7 +3425,7 @@ async function ensureToken() {
   if (!s) throw new Error("Nicht angemeldet.");
   if (Date.now() / 1000 < s.expires_at - 60) return;
   try { setSession(await sbFetch("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: JSON.stringify({ refresh_token: s.refresh_token }) }, false)); }
-  catch (e) { if (e.status === 400 || e.status === 401) { sync.session = null; saveSync(); render(); toast("Anmeldung abgelaufen. Bitte unter Einstellungen neu anmelden.", { ms: 7000 }); } throw e; }
+  catch (e) { if (e.status === 400 || e.status === 401) { sync.session = null; saveSync(); render(); toast("Anmeldung abgelaufen. Bitte neu anmelden.", { ms: 7000 }); } throw e; }
 }
 const rowPath = () => `/rest/v1/app_state?user_id=eq.${sync.session.user.id}`;
 function applyRemote(row) {
@@ -3439,6 +3441,11 @@ function mergeStates(remote, local) {
   ["checklists", "history", "properties", "events", "orders", "logs", "homework"].forEach(k => { m[k] = byId(remote[k], local[k]); });
   ["days", "reports"].forEach(k => { m[k] = { ...obj(local[k]), ...obj(remote[k]) }; });
   return m;
+}
+const hasContent = () => ["checklists", "properties", "events", "orders", "logs", "homework"].some(k => state[k].length) || Object.keys(state.days).length > 0 || Object.keys(state.reports).length > 0;
+function wipeLocal() {
+  [STORAGE_KEY, LEGACY_KEY, BACKUP_KEY].forEach(k => { try { localStorage.removeItem(k); } catch (e) { /* ohne Speicher */ } });
+  state = seedState(); ui.rep = null; saveState(true);
 }
 function keepBackup() { try { localStorage.setItem(BACKUP_KEY, JSON.stringify({ at: Date.now(), state })); } catch (e) { /* voll */ } }
 async function pushState() {
@@ -3482,12 +3489,13 @@ async function pullState(conflict = false) {
 }
 /* Beim ersten Anmelden: Server-Stand übernehmen oder diesen Stand hochladen */
 async function firstSync() {
+  const pending = sync.dirty;
   sync.version = 0; sync.dirty = false; saveSync();
   const [row] = await sbFetch(`${rowPath()}&select=data,version,device,updated_at`);
-  if (!row) { sync.dirty = true; saveSync(); await pushState(); toast("Angemeldet. Deine Daten sind jetzt online gesichert."); return; }
-  const take = await confirmDialog({ title: "Daten auf dem Server gefunden", text: `Es gibt schon einen Stand vom ${fmtD(dkey(new Date(row.updated_at)))} (${row.device || "anderes Gerät"}). Diesen Stand auf dieses Gerät übernehmen? Dein bisheriger Stand hier wird vorher als Sicherung aufbewahrt. Alternativ lädst du den Stand dieses Geräts hoch und ersetzt den Server-Stand.`, confirm: "Server-Stand übernehmen", cancel: "Diesen Stand hochladen" });
-  if (take) { keepBackup(); applyRemote(row); toast("Server-Stand übernommen."); }
-  else { sync.version = row.version; sync.dirty = true; saveSync(); await pushState(); toast("Stand dieses Geräts hochgeladen."); }
+  if (!row) { sync.dirty = true; saveSync(); await pushState(); return; }
+  /* Nach abgelaufener Anmeldung: hier noch nicht hochgeladene Änderungen behalten */
+  if (pending) { keepBackup(); applyRemote({ ...row, data: mergeStates(row.data, JSON.parse(JSON.stringify(state))) }); sync.dirty = true; saveSync(); await pushState(); }
+  else applyRemote(row);
 }
 async function signIn(create) {
   const email = $("#syEmail").value.trim(), password = $("#syPass").value;
@@ -3498,6 +3506,11 @@ async function signIn(create) {
       if (!b || !b.access_token) { toast("Konto angelegt. Bitte den Link in der Bestätigungs-Mail anklicken und dich dann hier anmelden.", { ms: 9000 }); return; }
       setSession(b);
     } else setSession(await sbFetch("/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email, password }) }, false));
+    /* Daten eines anderen Kontos nie übernehmen oder hochladen */
+    const me = sync.session.user.id;
+    if (!sync.owner && hasContent()) sync.dirty = true; /* Stand aus der Zeit vor der Anmeldepflicht: zusammenführen */
+    else if (sync.owner !== me) { wipeLocal(); sync.dirty = false; }
+    sync.owner = me; saveSync();
     render();
     await firstSync();
     render();
@@ -3515,7 +3528,8 @@ async function signIn(create) {
 }
 async function signOut() {
   try { await sbFetch("/auth/v1/logout", { method: "POST" }); } catch (e) { /* offline */ }
-  sync = {}; saveSync(); render(); toast("Abgemeldet. Deine Daten bleiben auf diesem Gerät.");
+  if (sync.dirty) await pushState();
+  sync = {}; saveSync(); wipeLocal(); location.hash = ""; render();
 }
 function renderSyncSetting() {
   const backup = (() => { try { return JSON.parse(localStorage.getItem(BACKUP_KEY)); } catch (e) { return null; } })();
