@@ -789,17 +789,17 @@ const SORTS = ["updated", "alpha", "favorite", "progress"];
 const DAY_STATUS = { "": "Betrieb", urlaub: "Urlaub", krank: "Krank", frei: "Frei / Gleittag" };
 const DEFAULT_STEPS = ["Was ist zu tun? (Beschreibung)", "Dringlichkeit | Normal, Dringend, Notfall", "Gewünschter Termin (TT.MM.JJJJ)", "Ansprechpartner / Firma", "Notiz"];
 /* Berufsschule: Do 8:45–16:00, Fr 8:00–13:45 (Pausen werden nicht abgezogen) */
-/* Stundenplan (Raum B108); Kürzel ohne bekannten Namen bleiben als Kürzel stehen */
+/* Stundenplan (Raum B108), Fächer als Kürzel; bei zwei Lehrkräften steht die erste */
 const L = (from, to, subject, teacher) => ({ from, to, subject, teacher, room: "B108" });
 const DEFAULT_SCHOOL = {
   4: { from: "08:45", to: "16:00", lessons: [
-    L("08:45", "09:30", "Immobilienwirtschaft", "Herr Miess"), L("09:45", "10:30", "FU-WiB", "Frau Lukas"),
-    L("10:30", "12:15", "Kaufmännische Steuerung und Controlling", "SbK"), L("12:15", "13:00", "Deutsch", "Frau Gebhart"),
-    L("13:45", "16:00", "Immobilienwirtschaft", "Frau Gaugenrieder")] },
+    L("08:45", "09:30", "IWi", "Herr Miess"), L("09:45", "10:30", "FU-WiB", "Frau Lukas"),
+    L("10:30", "12:15", "KSC", "Frau Schmiedbauer"), L("12:15", "13:00", "D", "Frau Gebhart"),
+    L("13:45", "16:00", "IWi", "Frau Gaugenrieder")] },
   5: { from: "08:00", to: "13:45", lessons: [
-    L("08:00", "08:45", "Immobilienwirtschaft", "Frau Gebhart"), L("08:45", "09:30", "Politik und Gesellschaft", "Herr Hummel"),
-    L("09:45", "10:30", "Immobilienwirtschaft", "Frau Gaugenrieder"), L("10:30", "11:15", "Englisch", "SaD"),
-    L("11:30", "13:00", "Immobilienwirtschaft", "Frau Gaugenrieder"), L("13:00", "13:45", "Immobilienwirtschaft", "Herr Miess")] }
+    L("08:00", "08:45", "IWi", "Frau Gebhart"), L("08:45", "09:30", "PuG", "Herr Hummel"),
+    L("09:45", "10:30", "IWi", "Frau Gaugenrieder"), L("10:30", "11:15", "E", "Frau Sailer"),
+    L("11:30", "13:00", "IWi", "Frau Gaugenrieder"), L("13:00", "13:45", "IWi", "Herr Miess")] }
 };
 const DEFAULT_SETTINGS = {
   theme: "system", animations: true, confirmDelete: true, autoRepeat: true, sort: "updated",
@@ -850,7 +850,7 @@ function seedState() {
   return {
     settings, checklists: [], history: [], properties: seedProperties(),
     events: schoolEvents(settings.school), orders: [], days: {}, logs: [], reports: { 1: { ...WEEK1 } }, chat: [], homework: [],
-    flags: { schoolSeeded: true, seedChecked: true, timetable: true }
+    flags: { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true }
   };
 }
 
@@ -980,7 +980,7 @@ function sanitizeState(raw) {
     homework: uniq(arr(s.homework).filter(h => h && str(h.text, 2000)).map(h => ({
       id: id(h.id), subject: str(h.subject, 80) || "Sonstiges", text: str(h.text, 2000), due: keyOr(h.due), done: !!h.done, at: num(h.at) ?? Date.now()
     }))).slice(-500),
-    flags: { schoolSeeded: !!flags.schoolSeeded, seedChecked: !!flags.seedChecked, timetable: !!flags.timetable }
+    flags: { schoolSeeded: !!flags.schoolSeeded, seedChecked: !!flags.seedChecked, timetable: !!flags.timetable, subjectCodes: !!flags.subjectCodes }
   };
 }
 
@@ -996,6 +996,14 @@ function loadState() {
   } catch (e) { /* Speicher leer oder nicht lesbar: neu beginnen */ }
   if (!st) return seedState();
   /* Einmalig bei bestehenden Daten: Berufsschultage eintragen */
+  /* Einmalig: ausgeschriebene Fächer auf Kürzel umstellen, fehlende Lehrkräfte ergänzen */
+  if (!st.flags.subjectCodes) {
+    const code = { "Immobilienwirtschaft": "IWi", "Kaufmännische Steuerung und Controlling": "KSC", "Politik und Gesellschaft": "PuG", "Englisch": "E", "Deutsch": "D" };
+    const teacher = { SbK: "Frau Schmiedbauer", SaD: "Frau Sailer" };
+    [4, 5].forEach(d => st.settings.school[d].lessons.forEach(l => { l.subject = code[l.subject] || l.subject; l.teacher = teacher[l.teacher] || l.teacher; }));
+    st.homework.forEach(h => { h.subject = code[h.subject] || h.subject; });
+    st.flags.subjectCodes = true;
+  }
   /* Einmalig: Stundenplan eintragen, falls noch keiner gepflegt ist */
   if (!st.flags.timetable) {
     [4, 5].forEach(d => { if (!st.settings.school[d].lessons.length) st.settings.school[d].lessons = clone(DEFAULT_SCHOOL[d].lessons); });
