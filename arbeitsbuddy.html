@@ -569,6 +569,8 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .auth-form .btn { width: 100%; justify-content: center; }
 .auth .hint-text { margin-top: 14px; }
 .table-wrap { overflow-x: auto; }
+.lbl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.lbl-row label { margin: 0; }
 .rep-table tr.sel td { background: var(--accent-soft); }
 .rep-table td { vertical-align: middle; white-space: nowrap; }
 #print-root { display: none; }
@@ -698,7 +700,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.8";
+const APP_VERSION = "2026-09-28.9";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1415,16 +1417,13 @@ function randomWeek(n, sick, pool) {
   let schule;
   if (!school.length) schule = collectWeek(n).schule;
   else {
-    const out = [], taken = new Set();
-    school.filter(k => !sickSet.has(k)).forEach(k => {
-      const subs = [...new Set(lessonsOf(k).map(l => l.subject).filter(x => pool.schule[x]))];
-      const keys = shuffle(subs.length ? subs : Object.keys(pool.schule));
-      const cnt = Math.max(2, Math.min(4, Math.round(schoolMins(k) / 120)));
-      for (let i = 0; i < cnt; i++) {
-        const sub = keys[i % keys.length], opts = shuffle(pool.schule[sub]).map(t => `${sub}: ${t}`).filter(t => !taken.has(t));
-        const t = opts.find(x => !used.has(norm(x))) || opts[0];
-        if (t) { taken.add(t); out.push(t); }
-      }
+    /* Jedes Fach der Woche genau einmal, in Stundenplan-Reihenfolge */
+    const out = [], okDays = school.filter(k => !sickSet.has(k));
+    let subs = [...new Set(okDays.flatMap(k => lessonsOf(k).map(l => l.subject)).filter(x => pool.schule[x]))];
+    if (!subs.length && okDays.length) subs = Object.keys(pool.schule);
+    subs.forEach(sub => {
+      const opts = shuffle(pool.schule[sub]).map(t => `${sub}: ${t}`);
+      out.push(opts.find(x => !used.has(norm(x))) || opts[0]);
     });
     const sickSchool = school.filter(k => sickSet.has(k));
     if (sickSchool.length) out.push(sickSchool.length === school.length ? `Krank (Berufsschule ${dayList(sickSchool)})` : `Krank: ${dayList(sickSchool)}`);
@@ -2421,13 +2420,13 @@ function renderReport(route) {
           <p class="hint-text" style="margin-top:8px">„Krank“ markieren, dann „Zufallsbericht“: kranke Tage stehen als Stichpunkt im Bericht, an Schultagen unter Berufsschule.</p>
         </section>
         <section class="panel panel-pad stack" style="gap:12px">
-          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-gen">${icon("bolt", 15)} Zufallsbericht erzeugen</button><span class="hint-text" style="align-self:center">Ergibt immer ${w.days.length * 8} Std. · jeder Klick neu · danach frei bearbeitbar</span></div>
-          <div class="field"><label for="rBetrieb">Betriebliche Tätigkeit <span class="hint-text">– ein Stichpunkt pro Zeile</span></label><textarea class="textarea" id="rBetrieb" rows="10">${esc(r.betrieb)}</textarea></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-gen">${icon("bolt", 15)} Alles zufällig erzeugen</button><span class="hint-text" style="align-self:center">Oder „Zufall“ je Bereich · ergibt immer ${w.days.length * 8} Std. · danach frei bearbeitbar</span></div>
+          <div class="field"><div class="lbl-row"><label for="rBetrieb">Betriebliche Tätigkeit <span class="hint-text">– ein Stichpunkt pro Zeile</span></label><button type="button" class="btn small" data-act="rep-gen" data-value="betrieb">${icon("bolt", 13)} Zufall</button></div><textarea class="textarea" id="rBetrieb" rows="10">${esc(r.betrieb)}</textarea></div>
           <div class="form"><div class="field"><label for="rHB">Stunden Betrieb</label><input class="input" id="rHB" inputmode="decimal" value="${esc(r.hBetrieb)}"></div><div class="field"><label for="rHS">Stunden Berufsschule</label><input class="input" id="rHS" inputmode="decimal" value="${esc(r.hSchule)}"></div></div>
-          <div class="field"><label for="rVT">Arbeitsvorgang dieser Woche (Überschrift)</label><input class="input" id="rVT" value="${esc(r.vorgangTitel)}" placeholder="z. B. Brief vorbereiten für den Versand"></div>
+          <div class="field"><div class="lbl-row"><label for="rVT">Arbeitsvorgang dieser Woche (Überschrift)</label><button type="button" class="btn small" data-act="rep-gen" data-value="vorgang">${icon("bolt", 13)} Zufall</button></div><input class="input" id="rVT" value="${esc(r.vorgangTitel)}" placeholder="z. B. Brief vorbereiten für den Versand"></div>
           <div class="field"><label for="rV">Schritte <span class="hint-text">– einer pro Zeile, wird mit „->“ gedruckt</span></label><textarea class="textarea" id="rV" rows="6">${esc(r.vorgang)}</textarea>
             ${weekOrders.length ? `<div class="btn-row" style="margin-top:4px">${weekOrders.slice(0, 3).map(o => `<button type="button" class="btn small" data-act="rep-order" data-value="${o.id}">Vorschlag: Auftrag ${esc((getProp(o.propId) || {}).ve || "")}</button>`).join("")}</div>` : ""}</div>
-          <div class="field"><label for="rS">Berufsschule (Themen des Unterrichts)</label><textarea class="textarea" id="rS" rows="5">${esc(r.schule)}</textarea></div>
+          <div class="field"><div class="lbl-row"><label for="rS">Berufsschule (Themen des Unterrichts)</label><button type="button" class="btn small" data-act="rep-gen" data-value="schule">${icon("bolt", 13)} Zufall</button></div><textarea class="textarea" id="rS" rows="5">${esc(r.schule)}</textarea></div>
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="rep-save">Speichern</button>
             <button type="button" class="btn" data-act="rep-pdf">${icon("print", 15)} PDF speichern</button>
@@ -3043,6 +3042,18 @@ function pdfPage(n, r) {
   [[22, 57.5, "Datum"], [62, 98, "Auszubildender"], [102, 135.5, "Datum"], [139.5, 173, "Ausbilder"]].forEach(([a, b, l]) => { line(X + a, ys[9] + 11, X + b, ys[9] + 11, 0.4); text(l, X + a, ys[9] + 15, 9); });
   return ops.join("\n");
 }
+/* Speichern-Dialog (Explorer), wo der Browser es kann (Chrome, Edge); sonst normaler Download */
+async function saveFile(name, bytes, type) {
+  if (window.showSaveFilePicker && window.isSecureContext && window.self === window.top) {
+    try {
+      const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "PDF-Dokument", accept: { [type]: [".pdf"] } }] });
+      const w = await h.createWritable(); await w.write(new Blob([bytes], { type })); await w.close();
+      return h.name;
+    } catch (e) { if (e && e.name === "AbortError") return null; }
+  }
+  download(name, bytes, type);
+  return name;
+}
 function savePdf(list) {
   list = list.filter(([, r]) => r);
   if (!list.length) { toast("Bitte den Nachweis zuerst speichern."); return; }
@@ -3063,9 +3074,8 @@ function savePdf(list) {
   const bytes = new Uint8Array(out.length);
   for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
   const h0 = repHead(list[0][0], list[0][1]), hl = repHead(list[list.length - 1][0], list[list.length - 1][1]);
-  const name = list.length === 1 ? `Ausbildungsnachweis_Nr_${h0.nr}_${fmtD(h0.from)}.pdf` : `Ausbildungsnachweise_Nr_${h0.nr}-${hl.nr}.pdf`;
-  download(name, bytes, "application/pdf");
-  toast(list.length === 1 ? `PDF gespeichert: ${name}` : `${list.length} Nachweise als ein PDF gespeichert.`);
+  const name = list.length === 1 ? `Berichtsheft_Woche_${h0.nr}.pdf` : `Berichtsheft_Woche_${h0.nr}-${hl.nr}.pdf`;
+  saveFile(name, bytes, "application/pdf").then(saved => { if (saved) toast(`PDF gespeichert: ${saved}`); });
 }
 function reseedSchool() {
   const k = todayKey();
@@ -3222,8 +3232,9 @@ async function handleAction(act, el) {
     case "rep-print": saveReport(); printReport(); break;
     case "rep-gen": {
       readRepForm();
-      const pool = await loadPool();
-      Object.assign(ui.rep, randomWeek(ui.rep.n, ui.rep.sick, pool));
+      const pool = await loadPool(), g = randomWeek(ui.rep.n, ui.rep.sick, pool);
+      const part = { betrieb: ["betrieb", "hBetrieb", "hSchule"], vorgang: ["vorgangTitel", "vorgang"], schule: ["schule", "hBetrieb", "hSchule"] }[val];
+      if (part) part.forEach(k => { ui.rep[k] = g[k]; }); else Object.assign(ui.rep, g);
       ui.rep.dirty = true;
       render(); toast(`Zufallsbericht erstellt${pool.fallback ? " (offline, kleiner Vorrat)" : ""}. Bitte prüfen und speichern.`, { ms: 6000 });
       break;
