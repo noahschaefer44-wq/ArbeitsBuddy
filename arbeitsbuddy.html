@@ -110,7 +110,18 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.3; }
 .nav a:hover, .nav button:hover { background: var(--surface-2); color: var(--ink); }
 .nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .nav .count { margin-left: auto; min-width: 22px; padding: 0 6px; text-align: center; font-size: 12.5px; line-height: 20px; border-radius: 10px; background: var(--surface-2); color: var(--muted); }
-.nav .more-btn { display: none; }
+.nav .more-btn, .nav .mob { display: none; }
+.nav-group { margin: 14px 10px 4px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.tt { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.lesson { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.lesson:last-child { border-bottom: 0; }
+.lesson .sub { font-size: 13px; color: var(--muted); }
+.lesson.pause { color: var(--muted); font-size: 13.5px; padding: 5px 0; }
+.hw { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.hw:last-child { border-bottom: 0; }
+.hw .grow { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hw.done .grow { color: var(--muted); text-decoration: line-through; }
+.hw .sub { font-size: 13px; color: var(--muted); text-decoration: none; }
 .rail-foot { margin-top: auto; padding: 14px 10px 0; font-size: 13px; color: var(--muted); }
 
 .main { min-width: 0; padding: 0 clamp(16px, 3vw, 36px) 56px; }
@@ -453,9 +464,10 @@ legend.lab { padding: 0; margin-bottom: 5px; }
 @media (max-width: 820px) {
   .app { display: block; }
   .rail { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; top: auto; height: auto; flex-direction: row; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); border-right: 0; border-top: 1px solid var(--line); overflow: visible; }
-  .rail .brand, .rail-foot, .nav .desk { display: none; }
+  .rail .brand, .rail-foot, .nav .desk, .nav-group { display: none; }
   .nav { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
-  .nav .more-btn { display: flex; }
+  .nav .more-btn, .nav .mob { display: flex; }
+  .tt { grid-template-columns: 1fr; }
   .nav a, .nav button { flex-direction: column; justify-content: center; gap: 2px; min-height: 52px; padding: 2px; font-size: 11.5px; text-align: center; }
   .nav .count { display: none; }
   .main { padding-bottom: 96px; }
@@ -568,6 +580,7 @@ const ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   map: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  school: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5M22 10v6"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
@@ -776,7 +789,18 @@ const SORTS = ["updated", "alpha", "favorite", "progress"];
 const DAY_STATUS = { "": "Betrieb", urlaub: "Urlaub", krank: "Krank", frei: "Frei / Gleittag" };
 const DEFAULT_STEPS = ["Was ist zu tun? (Beschreibung)", "Dringlichkeit | Normal, Dringend, Notfall", "Gewünschter Termin (TT.MM.JJJJ)", "Ansprechpartner / Firma", "Notiz"];
 /* Berufsschule: Do 8:45–16:00, Fr 8:00–13:45 (Pausen werden nicht abgezogen) */
-const DEFAULT_SCHOOL = { 4: { from: "08:45", to: "16:00", lessons: [] }, 5: { from: "08:00", to: "13:45", lessons: [] } };
+/* Stundenplan (Raum B108); Kürzel ohne bekannten Namen bleiben als Kürzel stehen */
+const L = (from, to, subject, teacher) => ({ from, to, subject, teacher, room: "B108" });
+const DEFAULT_SCHOOL = {
+  4: { from: "08:45", to: "16:00", lessons: [
+    L("08:45", "09:30", "Immobilienwirtschaft", "Herr Miess"), L("09:45", "10:30", "FU-WiB", "Frau Lukas"),
+    L("10:30", "12:15", "Kaufmännische Steuerung und Controlling", "SbK"), L("12:15", "13:00", "Deutsch", "Frau Gebhart"),
+    L("13:45", "16:00", "Immobilienwirtschaft", "Frau Gaugenrieder")] },
+  5: { from: "08:00", to: "13:45", lessons: [
+    L("08:00", "08:45", "Immobilienwirtschaft", "Frau Gebhart"), L("08:45", "09:30", "Politik und Gesellschaft", "Herr Hummel"),
+    L("09:45", "10:30", "Immobilienwirtschaft", "Frau Gaugenrieder"), L("10:30", "11:15", "Englisch", "SaD"),
+    L("11:30", "13:00", "Immobilienwirtschaft", "Frau Gaugenrieder"), L("13:00", "13:45", "Immobilienwirtschaft", "Herr Miess")] }
+};
 const DEFAULT_SETTINGS = {
   theme: "system", animations: true, confirmDelete: true, autoRepeat: true, sort: "updated",
   profile: { name: "Noah Schäfer", firma: "Gregor Deurer GmbH & Co. KG", abteilung: "Hausverwaltung", start: "2026-09-01" },
@@ -825,8 +849,8 @@ function seedState() {
   const settings = clone(DEFAULT_SETTINGS);
   return {
     settings, checklists: [], history: [], properties: seedProperties(),
-    events: schoolEvents(settings.school), orders: [], days: {}, logs: [], reports: { 1: { ...WEEK1 } }, chat: [],
-    flags: { schoolSeeded: true, seedChecked: true }
+    events: schoolEvents(settings.school), orders: [], days: {}, logs: [], reports: { 1: { ...WEEK1 } }, chat: [], homework: [],
+    flags: { schoolSeeded: true, seedChecked: true, timetable: true }
   };
 }
 
@@ -898,7 +922,7 @@ function sanitizeSchool(s) {
     const x = obj(s[d]), def = DEFAULT_SCHOOL[d];
     out[d] = {
       from: timeOr(x.from) || def.from, to: timeOr(x.to) || def.to,
-      lessons: arr(x.lessons).filter(l => l && str(l.subject, 80)).map(l => ({ from: timeOr(l.from), to: timeOr(l.to), subject: str(l.subject, 80), room: str(l.room, 40) })).slice(0, 14)
+      lessons: arr(x.lessons).filter(l => l && str(l.subject, 80)).map(l => ({ from: timeOr(l.from), to: timeOr(l.to), subject: str(l.subject, 80), teacher: str(l.teacher, 80), room: str(l.room, 40) })).slice(0, 14)
     };
   });
   return out;
@@ -953,7 +977,10 @@ function sanitizeState(raw) {
     }))).slice(-3000),
     reports,
     chat: arr(s.chat).filter(m => m && str(m.text, 4000)).map(m => ({ from: m.from === "me" ? "me" : "bot", text: str(m.text, 4000) })).slice(-200),
-    flags: { schoolSeeded: !!flags.schoolSeeded, seedChecked: !!flags.seedChecked }
+    homework: uniq(arr(s.homework).filter(h => h && str(h.text, 2000)).map(h => ({
+      id: id(h.id), subject: str(h.subject, 80) || "Sonstiges", text: str(h.text, 2000), due: keyOr(h.due), done: !!h.done, at: num(h.at) ?? Date.now()
+    }))).slice(-500),
+    flags: { schoolSeeded: !!flags.schoolSeeded, seedChecked: !!flags.seedChecked, timetable: !!flags.timetable }
   };
 }
 
@@ -969,6 +996,11 @@ function loadState() {
   } catch (e) { /* Speicher leer oder nicht lesbar: neu beginnen */ }
   if (!st) return seedState();
   /* Einmalig bei bestehenden Daten: Berufsschultage eintragen */
+  /* Einmalig: Stundenplan eintragen, falls noch keiner gepflegt ist */
+  if (!st.flags.timetable) {
+    [4, 5].forEach(d => { if (!st.settings.school[d].lessons.length) st.settings.school[d].lessons = clone(DEFAULT_SCHOOL[d].lessons); });
+    st.flags.timetable = true;
+  }
   if (!st.flags.schoolSeeded) {
     st.events.push(...schoolEvents(st.settings.school));
     if (!st.reports[1]) st.reports[1] = { ...WEEK1 };
@@ -1102,6 +1134,7 @@ function dayItems(k) {
   eventsOn(k).forEach(e => items.push({ cls: e.kind === "schule" ? "schule" : "termin", label: (e.from ? e.from + " " : "") + e.title, ev: e.id }));
   state.checklists.forEach(l => { if (!l.template && !l.archived) l.tasks.forEach(t => { if (t.due === k) items.push({ cls: "task" + (t.completed ? " done" : ""), label: "Aufgabe: " + t.title, list: l.id }); }); });
   state.orders.forEach(o => { if (o.due === k) items.push({ cls: "order", label: "Auftrag: " + propLabel(getProp(o.propId)), order: o.id }); });
+  state.homework.forEach(h => { if (h.due === k && !h.done) items.push({ cls: "task", label: `HA ${h.subject}: ${h.text}`, hw: true }); });
   return items;
 }
 
@@ -1206,6 +1239,8 @@ function parseRoute() {
   const [a, b, c] = h.split("/");
   switch (a) {
     case "today": return { view: "today" };
+    case "school": return { view: "school" };
+    case "homework": return { view: "homework" };
     case "calendar": return { view: "calendar", mode: ["month", "week", "day"].includes(b) ? b : "month", date: isKey(c) ? c : todayKey() };
     case "props": return { view: "props" };
     case "prop": return getProp(b) ? { view: "prop", propId: b } : { view: "props" };
@@ -1262,29 +1297,43 @@ function resolveTheme() {
   if (t === "dark" || t === "light") return t;
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
+/* [id, Link, Icon, Name, in unterer Handy-Leiste, Bereich] */
 const NAV = [
-  ["overview", "#/", "dash", "Übersicht", 1],
-  ["today", "#/today", "today", "Heute", 1],
-  ["calendar", "#/calendar", "cal", "Kalender", 1],
-  ["props", "#/props", "building", "Liegenschaften", 0],
-  ["assistant", "#/assistant", "chat", "Assistent", 0],
-  ["lists", "#/lists", "clipboard", "Checklisten", 0],
-  ["templates", "#/templates", "layers", "Vorlagen", 0],
-  ["report", "#/report", "book", "Berichtsheft", 1],
-  ["settings", "#/settings", "sliders", "Einstellungen", 0]
+  ["overview", "#/", "dash", "Start", 1, ""],
+  ["school", "#/school", "school", "Stundenplan", 0, "Schule"],
+  ["homework", "#/homework", "note", "Hausaufgaben", 0, "Schule"],
+  ["report", "#/report", "book", "Berichtsheft", 0, "Schule"],
+  ["today", "#/today", "today", "Heute", 1, "Arbeit"],
+  ["calendar", "#/calendar", "cal", "Kalender", 1, "Arbeit"],
+  ["props", "#/props", "building", "Liegenschaften", 0, "Arbeit"],
+  ["assistant", "#/assistant", "chat", "Assistent", 0, "Arbeit"],
+  ["lists", "#/lists", "clipboard", "Checklisten", 0, "Arbeit"],
+  ["templates", "#/templates", "layers", "Vorlagen", 0, "Arbeit"],
+  ["settings", "#/settings", "sliders", "Einstellungen", 0, ""]
 ];
+const SCHOOL_VIEWS = ["school", "homework", "report"];
 function curNav(route) {
   if (route.view === "list") return getList(route.listId)?.template ? "templates" : "lists";
   if (route.view === "prop") return "props";
   return route.view;
 }
+function navLinks(cur, withGroups) {
+  let last = "", html = "";
+  NAV.forEach(([id, href, ic, label, mobile, group]) => {
+    if (withGroups && group !== last) { html += group ? `<div class="nav-group">${group}</div>` : `<div style="height:10px"></div>`; last = group; }
+    const count = id === "today" && dayStats().open ? `<span class="count">${dayStats().open}</span>` : id === "homework" && openHw().length ? `<span class="count">${openHw().length}</span>` : "";
+    html += `<a href="${href}" class="${mobile ? "" : "desk"}" ${cur === id ? 'aria-current="page"' : ""}>${icon(ic, 19)}<span>${label}</span>${count}</a>`;
+  });
+  return html;
+}
 function renderRail(route) {
-  const d = dayStats(), cur = curNav(route);
+  const cur = curNav(route);
   return `
     <aside class="rail">
-      <a class="brand" href="#/" aria-label="ArbeitsBuddy, zur Übersicht">${LOGO}</a>
+      <a class="brand" href="#/" aria-label="ArbeitsBuddy, zum Start">${LOGO}</a>
       <nav class="nav" aria-label="Hauptnavigation">
-        ${NAV.map(([id, href, ic, label, mobile]) => `<a href="${href}" class="${mobile ? "" : "desk"}" ${cur === id ? 'aria-current="page"' : ""}>${icon(ic, 19)}<span>${label}</span>${id === "today" && d.open ? `<span class="count">${d.open}</span>` : ""}</a>`).join("")}
+        ${navLinks(cur, true)}
+        <a href="#/school" class="mob" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 19)}<span>Schule</span></a>
         <button type="button" class="more-btn" data-act="more">${icon("more", 19)}<span>Mehr</span></button>
       </nav>
       <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}</div>
@@ -1319,19 +1368,39 @@ function sampleHint() {
 }
 function renderOverview() {
   const k = todayKey(), d = dayStats();
-  const evs = eventsOn(k), hol = holiday(k);
+  const evs = eventsOn(k).filter(e => e.kind !== "schule"), hol = holiday(k);
   const due = dueTasks(k);
   const open = sortLists(runs()).filter(l => !isDone(l) && l.tasks.length).slice(0, 5);
-  const n = weekNo(k), w = weekRange(Math.max(1, n)), r = reportFor(Math.max(1, n));
+  const n = Math.max(1, weekNo(k)), w = weekRange(n), r = reportFor(n);
   const entries = bullet(r.betrieb).length;
+  const ns = nextSchoolDay(), hw = openHw().slice(0, 5);
   return `
     <div class="page-head"><div><h1>${greeting()}, ${esc(state.settings.profile.name.split(" ")[0] || "")}</h1><p class="lede">${fmtLong(k)} · KW ${isoWeek(new Date())}${hol ? ` · ${esc(hol)}` : ""}</p></div></div>
     ${sampleHint()}${reportHint()}
-    <div class="cols">
-      <div class="stack" style="gap:22px">
+    <div class="cols" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="stack" style="gap:14px">
+        <div class="sec-head"><h2 style="font-size:20px;display:flex;gap:8px;align-items:center">${icon("school", 20)} Schule</h2></div>
+        <section class="panel panel-pad" aria-labelledby="hNs">
+          <div class="sec-head"><h2 id="hNs">${ns ? (ns === k ? "Heute Berufsschule" : `Nächster Schultag: ${WD[pkey(ns).getDay()]}, ${fmtDs(ns)}`) : "Berufsschule"}</h2><a class="link-btn" href="#/school">Stundenplan</a></div>
+          ${ns ? lessonsOf(ns).map(l => `<div class="item"><span class="time">${esc(l.from)}–${esc(l.to)}</span><div class="grow">${esc(l.subject)}<div class="sub">${esc(l.teacher)}</div></div></div>`).join("") || `<p class="hint-text">Kein Stundenplan eingetragen.</p>` : `<p class="hint-text">Keine Schultage mehr eingetragen.</p>`}
+        </section>
+        <section class="panel panel-pad" aria-labelledby="hHw">
+          <div class="sec-head"><h2 id="hHw">Hausaufgaben</h2><a class="link-btn" href="#/homework">Alle</a></div>
+          ${hw.length ? hw.map(h => `<div class="item"><span class="time">${h.due ? (h.due < k ? "überfällig" : fmtDs(h.due)) : "ohne Datum"}</span><div class="grow">${esc(h.text)}<div class="sub">${esc(h.subject)}</div></div></div>`).join("") : `<p class="hint-text">Keine offenen Hausaufgaben.</p>`}
+        </section>
+        <section class="panel panel-pad" aria-labelledby="hRep">
+          <div class="sec-head"><h2 id="hRep">Berichtsheft diese Woche</h2><a class="link-btn" href="#/report/${n}">Öffnen</a></div>
+          <p>Nachweis Nr. ${n} · ${fmtD(w.from)} – ${fmtD(w.to)}</p>
+          <p class="hint-text" style="margin:4px 0 10px">${r.done ? "Fertig gespeichert." : r.saved ? "Entwurf gespeichert." : `${plural(entries, "Eintrag", "Einträge")} gemerkt.`} Betrieb ${r.hBetrieb || "0"} Std. · Schule ${r.hSchule || "0"} Std.</p>
+          ${bar(Math.min(100, Math.round(parseH(sumH(r)) / 40 * 100)), r.done)}
+        </section>
+      </div>
+      <div class="stack" style="gap:14px">
+        <div class="sec-head"><h2 style="font-size:20px;display:flex;gap:8px;align-items:center">${icon("building", 20)} Arbeit</h2></div>
         <section class="panel panel-pad" aria-labelledby="hEv">
           <div class="sec-head"><h2 id="hEv">Termine heute</h2><a class="link-btn" href="#/calendar/day/${k}">Kalender</a></div>
           ${evs.length ? evs.map(e => evLine(e, k)).join("") : `<p class="hint-text">Heute keine Termine.</p>`}
+          <div class="btn-row" style="margin-top:10px"><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("clock", 15)} Arbeitszeit & Einträge heute</button></div>
         </section>
         <section class="panel panel-pad" aria-labelledby="hOpen">
           <div class="sec-head"><h2 id="hOpen">Offene Aufgaben</h2><a class="link-btn" href="#/today">Heute</a></div>
@@ -1340,14 +1409,73 @@ function renderOverview() {
           ${!due.length && !open.length ? `<p class="hint-text">Keine offenen Aufgaben. ${d.req ? "Alles erledigt." : ""}</p>` : ""}
         </section>
       </div>
-      <section class="panel panel-pad" aria-labelledby="hRep">
-        <div class="sec-head"><h2 id="hRep">Berichtsheft diese Woche</h2><a class="link-btn" href="#/report/${Math.max(1, n)}">Öffnen</a></div>
-        <p>Nachweis Nr. ${Math.max(1, n)} · ${fmtD(w.from)} – ${fmtD(w.to)}</p>
-        <p class="hint-text" style="margin:4px 0 10px">${r.done ? "Fertig gespeichert." : r.saved ? "Entwurf gespeichert." : `${plural(entries, "Eintrag", "Einträge")} gemerkt.`} Betrieb ${r.hBetrieb || "0"} Std. · Schule ${r.hSchule || "0"} Std.</p>
-        ${bar(Math.min(100, Math.round(parseH(sumH(r)) / 40 * 100)), r.done)}
-        <div class="btn-row" style="margin-top:14px"><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("clock", 15)} Arbeitszeit & Einträge heute</button></div>
-      </section>
     </div>`;
+}
+
+/* ==========================================================
+   Schule: Stundenplan und Hausaufgaben
+   ========================================================== */
+const schoolTabs = cur => `<nav class="tabs" aria-label="Schule" style="margin-bottom:16px">${NAV.filter(n => n[5] === "Schule").map(([id, href, , label]) => `<a href="${href}" ${cur === id ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
+const isSchoolDay = k => eventsOn(k).some(e => e.kind === "schule");
+const lessonsOf = k => state.settings.school[pkey(k).getDay()]?.lessons || [];
+function nextSchoolDay(from = todayKey(), subject = "") {
+  for (let i = 0; i < 120; i++) {
+    const k = dkey(addDays(pkey(from), i));
+    if (isSchoolDay(k) && (!subject || lessonsOf(k).some(l => l.subject === subject))) return k;
+  }
+  return "";
+}
+const openHw = () => state.homework.filter(h => !h.done).sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
+const subjects = () => [...new Set([4, 5].flatMap(d => state.settings.school[d].lessons.map(l => l.subject)))];
+const lessonLines = d => state.settings.school[d].lessons.map(l => `${l.from}${l.to ? "-" + l.to : ""} ${l.subject}${l.teacher ? " | " + l.teacher : ""}${l.room ? " | " + l.room : ""}`).join("\n");
+function renderTimetable() {
+  const st = state.settings.school, ns = nextSchoolDay();
+  const col = d => {
+    const ls = st[d].lessons;
+    const rows = ls.map((l, i) => {
+      const gap = i && ls[i - 1].to && l.from && ls[i - 1].to < l.from ? `<div class="lesson pause"><span>${esc(ls[i - 1].to)}–${esc(l.from)}</span><span>Pause</span><span></span></div>` : "";
+      return gap + `<div class="lesson"><span class="time">${esc(l.from)}–${esc(l.to)}</span><div><div>${esc(l.subject)}</div><div class="sub">${esc([l.teacher, l.room].filter(Boolean).join(" · "))}</div></div>
+        <button type="button" class="btn small" data-act="hw-new" data-value="${esc(l.subject)}" title="Hausaufgabe für ${esc(l.subject)}">${icon("plus", 13)} HA</button></div>`;
+    }).join("");
+    return `<section class="panel panel-pad"><div class="sec-head"><h2>${WDL[d]}</h2><span class="hint-text">${st[d].from}–${st[d].to} Uhr</span></div>${rows || `<p class="hint-text">Noch keine Stunden eingetragen.</p>`}</section>`;
+  };
+  return `
+    <div class="page-head"><div><h1>Stundenplan</h1><p class="lede">Berufsschule jeden Donnerstag und Freitag, Raum B108.${ns ? ` Nächster Schultag: ${fmtLong(ns)}.` : ""}</p></div></div>
+    ${schoolTabs("school")}
+    <div class="tt">${col(4)}${col(5)}</div>
+    <form class="setting" id="schoolForm" style="margin-top:18px">
+      <h3>Stundenplan bearbeiten</h3><p>Eine Stunde pro Zeile: „08:45-09:30 Fach | Lehrkraft | Raum“. Unterrichtszeiten zählen fürs Berichtsheft ohne Abzug der Pausen.</p>
+      <div class="form">
+        ${[4, 5].map(d => `<div class="field"><span class="lab">${WDL[d]}</span><div style="display:flex;gap:6px;align-items:center"><input class="input" type="time" id="s${d}f" value="${st[d].from}" aria-label="${WDL[d]} von"> – <input class="input" type="time" id="s${d}t" value="${st[d].to}" aria-label="${WDL[d]} bis"></div>
+          <textarea class="textarea" id="s${d}l" rows="7" aria-label="Stundenplan ${WDL[d]}">${esc(lessonLines(d))}</textarea></div>`).join("")}
+      </div>
+      <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="school-reseed">Berufsschultage im Kalender neu eintragen</button></div>
+    </form>`;
+}
+function renderHomework() {
+  const k = todayKey(), subs = subjects();
+  const all = [...new Set([...subs, ...state.homework.map(h => h.subject)])];
+  const pre = ui.hwSubject && all.includes(ui.hwSubject) ? ui.hwSubject : subs[0] || "Sonstiges";
+  const groups = all.map(sub => {
+    const items = state.homework.filter(h => h.subject === sub).sort((a, b) => Number(a.done) - Number(b.done) || (a.due || "9999").localeCompare(b.due || "9999"));
+    if (!items.length) return "";
+    const openN = items.filter(h => !h.done).length;
+    return `<section class="panel panel-pad"><div class="sec-head"><h2>${esc(sub)}</h2><span class="hint-text">${openN ? `${openN} offen` : "alles erledigt"}</span></div>
+      ${items.map(h => `<div class="hw ${h.done ? "done" : ""}">
+        <button type="button" class="check" role="checkbox" aria-checked="${h.done}" aria-label="${esc(h.text)}" data-act="hw-toggle" data-value="${h.id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17.5 19.5 7"/></svg></button>
+        <div class="grow">${esc(h.text)}<div class="sub">${h.due ? `bis ${WD[pkey(h.due).getDay()]}, ${fmtD(h.due)}${!h.done && h.due < k ? " · überfällig" : ""}` : "ohne Datum"}</div></div>
+        <button type="button" class="btn small icon quiet danger" data-act="hw-delete" data-value="${h.id}" aria-label="Löschen: ${esc(h.text)}" title="Löschen">${icon("trash", 15)}</button></div>`).join("")}</section>`;
+  }).join("");
+  return `
+    <div class="page-head"><div><h1>Hausaufgaben</h1><p class="lede">Nach Fach sortiert. Das Datum wird auf die nächste Stunde im Fach gesetzt.</p></div></div>
+    ${schoolTabs("homework")}
+    <form class="panel panel-pad form" id="hwForm" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr) 170px auto;align-items:end;margin-bottom:18px" autocomplete="off">
+      <div class="field"><label for="hwSub">Fach</label><select class="select" id="hwSub">${[...all, ...(all.includes("Sonstiges") ? [] : ["Sonstiges"])].map(x => `<option ${x === pre ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+      <div class="field"><label for="hwText">Aufgabe</label><input class="input" id="hwText" maxlength="2000" placeholder="z. B. S. 42 Nr. 3 bearbeiten"></div>
+      <div class="field"><label for="hwDue">Bis</label><input class="input" id="hwDue" type="date" value="${esc(nextSchoolDay(dkey(addDays(new Date(), 1)), pre))}"></div>
+      <button type="submit" class="btn primary">${icon("plus", 16)} Eintragen</button>
+    </form>
+    <div class="stack" style="gap:14px">${groups || emptyState({ ic: "note", title: "Keine Hausaufgaben", text: "Trag oben ein, was bis zur nächsten Stunde zu erledigen ist." })}</div>`;
 }
 
 /* ==========================================================
@@ -1648,7 +1776,7 @@ function calNav(mode, k) {
     </div>`;
 }
 function evChip(it, k, max) {
-  const attrs = it.ev ? `data-act="edit-event" data-value="${it.ev}" data-date="${k}"` : it.list ? `data-act="open-list" data-list="${it.list}"` : `data-act="day" data-date="${k}"`;
+  const attrs = it.ev ? `data-act="edit-event" data-value="${it.ev}" data-date="${k}"` : it.list ? `data-act="open-list" data-list="${it.list}"` : it.hw ? `data-act="goto" data-value="/homework"` : `data-act="day" data-date="${k}"`;
   return `<button type="button" class="ev ${it.cls}" ${attrs} title="${esc(it.label)}">${esc(max ? it.label.slice(0, max) : it.label)}</button>`;
 }
 function renderCalendar(route) {
@@ -1924,12 +2052,11 @@ function saveReport(done) {
 /* ==========================================================
    Einstellungen
    ========================================================== */
-const lessonLines = d => state.settings.school[d].lessons.map(l => `${l.from}${l.to ? "-" + l.to : ""} ${l.subject}${l.room ? ` (${l.room})` : ""}`.trim()).join("\n");
 function renderSettings() {
   const st = state.settings, p = st.profile;
   const sw = (id, label, sub, on) => `<div class="toggle-row"><div><div id="${id}L">${label}</div><div class="sub">${sub}</div></div><span class="switch"><input type="checkbox" id="${id}" aria-labelledby="${id}L" ${on ? "checked" : ""}></span></div>`;
   return `
-    <div class="page-head"><div><h1>Einstellungen</h1><p class="lede">Berichtsheft, Berufsschule, Aufträge, Darstellung und Daten.</p></div></div>
+    <div class="page-head"><div><h1>Einstellungen</h1><p class="lede">Berichtsheft, Aufträge, Darstellung und Daten. Den Stundenplan bearbeitest du unter Schule → Stundenplan.</p></div></div>
     <div class="settings">
       <form class="setting" id="profileForm">
         <h3>Berichtsheft</h3><p>Kopfdaten für den Ausbildungsnachweis. Nachweis-Nr. und Ausbildungsjahr werden ab dem Ausbildungsbeginn berechnet.</p>
@@ -1940,14 +2067,6 @@ function renderSettings() {
           <div class="field"><label for="pAbt">Ausbildungsabteilung</label><input class="input" id="pAbt" value="${esc(p.abteilung)}"></div>
         </div>
         <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button></div>
-      </form>
-      <form class="setting" id="schoolForm">
-        <h3>Berufsschule und Stundenplan</h3><p>Unterrichtszeiten zählen ohne Abzug der Pausen. Stundenplan: eine Stunde pro Zeile, z. B. „08:45-10:15 Deutsch (R 104)“.</p>
-        <div class="form">
-          ${[4, 5].map(d => `<div class="field"><span class="lab">${WDL[d]}</span><div style="display:flex;gap:6px;align-items:center"><input class="input" type="time" id="s${d}f" value="${st.school[d].from}" aria-label="${WDL[d]} von"> – <input class="input" type="time" id="s${d}t" value="${st.school[d].to}" aria-label="${WDL[d]} bis"></div>
-            <textarea class="textarea" id="s${d}l" rows="5" aria-label="Stundenplan ${WDL[d]}" placeholder="08:45-10:15 Fach">${esc(lessonLines(d))}</textarea></div>`).join("")}
-        </div>
-        <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="school-reseed">Berufsschultage neu eintragen</button></div>
       </form>
       <form class="setting" id="stepsForm">
         <h3>Auftragsschritte</h3><p>Fragen, die der Assistent beim Anlegen eines Auftrags stellt. Eine pro Zeile. Auswahl-Buttons mit „Frage | Option, Option“.</p>
@@ -1992,7 +2111,7 @@ function renderSettings() {
 /* ==========================================================
    Rendern
    ========================================================== */
-const TITLES = { overview: "Übersicht", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", report: "Berichtsheft", settings: "Einstellungen" };
+const TITLES = { school: "Stundenplan", homework: "Hausaufgaben", overview: "Start", today: "Heute", calendar: "Kalender", props: "Liegenschaften", assistant: "Assistent", lists: "Checklisten", templates: "Vorlagen", report: "Berichtsheft", settings: "Einstellungen" };
 function focusKey(el) { const d = el.dataset || {}; return [el.id, d.act, d.task, d.list, d.value, d.date, el.getAttribute("name"), el.getAttribute("href")].join("|"); }
 function findByKey(key) {
   if (!key || /^\|+$/.test(key)) return null;
@@ -2010,6 +2129,8 @@ function renderPage(route) {
     case "list": return renderListPage(getList(route.listId));
     case "templates": return renderTemplates();
     case "report": return renderReport(route);
+    case "school": return renderTimetable();
+    case "homework": return renderHomework();
     case "settings": return renderSettings();
     default: return renderOverview();
   }
@@ -2261,7 +2382,7 @@ function openDayModal(k) {
         <div class="field full"><span class="lab">Fürs Berichtsheft gemerkt</span>
           ${logs.map(l => `<div class="log"><span class="grow">-${esc(l.text)}</span><button type="button" class="btn small icon quiet" data-act="log-del" data-value="${l.id}" data-date="${k}" aria-label="Entfernen: ${esc(l.text)}">${icon("x", 14)}</button></div>`).join("")}
           <textarea class="textarea" id="dEntries" rows="4" placeholder="Eigene Stichpunkte, einer pro Zeile – z. B. Post geöffnet und verteilt">${esc(d.entries.map(x => x.text).join("\n"))}</textarea></div>
-        ${isSchool ? `<div class="field full"><label for="dSchool">Berufsschule – Themen des Unterrichts</label>${lessons.length ? `<p class="hint-text">${lessons.map(l => `${esc(l.from)} ${esc(l.subject)}`).join(" · ")}</p>` : ""}<textarea class="textarea" id="dSchool" rows="4" placeholder="${esc(lessons.length ? lessons.map(l => l.subject + ": ").join("\n") : "Ein Thema pro Zeile")}">${esc(d.school || "")}</textarea></div>` : ""}
+        ${isSchool ? `<div class="field full"><label for="dSchool">Berufsschule – Themen des Unterrichts</label>${lessons.length ? `<p class="hint-text">${lessons.map(l => `${esc(l.from)} ${esc(l.subject)}${l.teacher ? ` (${esc(l.teacher)})` : ""}`).join(" · ")}</p>` : ""}<textarea class="textarea" id="dSchool" rows="4" placeholder="${esc(lessons.length ? [...new Set(lessons.map(l => l.subject + ": …"))].join("\n") : "Ein Thema pro Zeile")}">${esc(d.school || "")}</textarea></div>` : ""}
         <div class="field full"><span class="lab">Termine</span>${evs.length ? evs.map(e => evLine(e, k)).join("") : `<p class="hint-text">Keine Termine.</p>`}</div>
       </form>`,
     foot: `<button type="button" class="btn" data-act="new-event" data-date="${k}" style="margin-right:auto">${icon("plus", 15)} Termin</button><a class="btn" href="#/calendar/day/${k}" data-act="close-dialog">Tagesansicht</a><button type="submit" form="dayForm" class="btn primary">Speichern</button>`
@@ -2307,7 +2428,12 @@ function savePropForm(form) {
   saveState(); closeDialog(); render(); toast("Liegenschaft gespeichert.");
 }
 function openMoreSheet() {
-  openDialog({ title: "Mehr", narrow: true, body: `<nav class="sheet-menu">${NAV.filter(n => !n[4]).map(([id, href, ic, label]) => `<a href="${href}" data-act="close-dialog">${icon(ic, 20)}${label}</a>`).join("")}</nav>` });
+  let last = "", html = "";
+  NAV.filter(n => !n[4]).forEach(([id, href, ic, label, , group]) => {
+    if (group !== last) { html += `<div class="nav-group" style="display:block">${group || "Allgemein"}</div>`; last = group; }
+    html += `<a href="${href}" data-act="close-dialog">${icon(ic, 20)}${label}</a>`;
+  });
+  openDialog({ title: "Mehr", narrow: true, body: `<nav class="sheet-menu">${html}</nav>` });
 }
 
 /* ==========================================================
@@ -2375,6 +2501,17 @@ async function handleAction(act, el) {
     case "new-list": openListModal(null, { template: el.dataset.template === "1" }); break;
     case "edit-list": if (list) openListModal(list.id); break;
     case "open-list": go(`/list/${listId}`); break;
+    case "goto": closeDialog(); go(val); break;
+    case "hw-new": ui.hwSubject = val; go("/homework"); setTimeout(() => $("#hwText")?.focus(), 60); break;
+    case "hw-toggle": { const h = state.homework.find(x => x.id === val); if (h) { h.done = !h.done; saveState(); render(); } break; }
+    case "hw-delete": {
+      const h = state.homework.find(x => x.id === val);
+      if (!h) break;
+      const snap = snapshot();
+      state.homework = state.homework.filter(x => x.id !== val);
+      saveState(); render(); toastUndo("Hausaufgabe gelöscht.", snap);
+      break;
+    }
     case "close-dialog": closeDialog(); break;
     case "dlg-cancel": closeDialog(); break;
     case "dlg-ok": { const r = pendingConfirm; pendingConfirm = null; closeDialog(); if (r) r(true); break; }
@@ -2541,7 +2678,7 @@ function importData(file) {
     catch (err) { toast("Import fehlgeschlagen: Das ist keine ArbeitsBuddy-Sicherung."); return; }
     const next = sanitizeState(parsed);
     next.flags.schoolSeeded = true;
-    if (!await confirmDialog({ title: "Sicherung importieren?", text: `Enthalten: ${next.checklists.length} Checklisten, ${next.properties.length} Liegenschaften, ${next.events.length} Termine, ${next.orders.length} Aufträge, ${Object.keys(next.reports).length} Berichte. Deine aktuellen Daten werden ersetzt.`, confirm: "Importieren", danger: true })) return;
+    if (!await confirmDialog({ title: "Sicherung importieren?", text: `Enthalten: ${next.checklists.length} Checklisten, ${next.properties.length} Liegenschaften, ${next.events.length} Termine, ${next.orders.length} Aufträge, ${Object.keys(next.reports).length} Berichte, ${next.homework.length} Hausaufgaben. Deine aktuellen Daten werden ersetzt.`, confirm: "Importieren", danger: true })) return;
     const snap = snapshot();
     state = next; saveState(); go("/"); toastUndo("Sicherung importiert.", snap);
   };
@@ -2647,9 +2784,20 @@ document.addEventListener("submit", e => {
     Object.assign(p, { name: $("#pName").value.trim(), firma: $("#pFirma").value.trim(), abteilung: $("#pAbt").value.trim(), start: keyOr($("#pStart").value) || p.start });
     saveState(); render(); toast("Gespeichert.");
   } else if (f.id === "schoolForm") {
-    const parse = t => bullet(t).map(l => { const m = l.match(/^(\d{1,2}[:.]\d{2})\s*[-–]?\s*(\d{1,2}[:.]\d{2})?\s*(.*)$/); if (!m) return { from: "", to: "", subject: l, room: "" }; const fix = x => x ? x.replace(".", ":").padStart(5, "0") : ""; const rm = m[3].match(/^(.*?)\s*\(([^)]*)\)\s*$/); return { from: timeOr(fix(m[1])), to: timeOr(fix(m[2])), subject: (rm ? rm[1] : m[3]).trim() || "Unterricht", room: rm ? rm[2] : "" }; });
+    const fix = x => x ? x.replace(".", ":").padStart(5, "0") : "";
+    const parse = t => bullet(t).map(l => {
+      const m = l.match(/^(\d{1,2}[:.]\d{2})\s*[-–]?\s*(\d{1,2}[:.]\d{2})?\s*(.*)$/);
+      const [subject, teacher = "", room = ""] = (m ? m[3] : l).split("|").map(x => x.trim());
+      return { from: m ? timeOr(fix(m[1])) : "", to: m ? timeOr(fix(m[2])) : "", subject: subject || "Unterricht", teacher, room };
+    });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
+  } else if (f.id === "hwForm") {
+    const text = $("#hwText").value.trim();
+    if (!text) { toast("Bitte schreib die Hausaufgabe auf."); $("#hwText").focus(); return; }
+    ui.hwSubject = $("#hwSub").value;
+    state.homework.push({ id: uid(), subject: ui.hwSubject, text: text.slice(0, 2000), due: keyOr($("#hwDue").value), done: false, at: Date.now() });
+    saveState(); render(); toast("Hausaufgabe eingetragen."); setTimeout(() => $("#hwText")?.focus(), 0);
   } else if (f.id === "stepsForm") {
     const steps = bullet($("#stepsText").value).slice(0, 20);
     state.settings.orderSteps = steps.length ? steps : [...DEFAULT_STEPS];
@@ -2672,6 +2820,7 @@ document.addEventListener("change", e => {
   if (t.name === "qtype") ui.quickType = t.value;
   else if (t.id === "taskSort") { ui.sort = t.value; render(); }
   else if (t.id === "listSort") { state.settings.sort = t.value; saveState(); render(); }
+  else if (t.id === "hwSub") { ui.hwSubject = t.value; const d = $("#hwDue"); if (d) d.value = nextSchoolDay(dkey(addDays(new Date(), 1)), t.value); }
   else if (t.id === "propFirm") { ui.propFirm = t.value; render(); }
   else if (t.id === "propSb") { ui.propSb = t.value; render(); }
   else if (t.id === "propArch") { ui.showArchived = t.checked; render(); }
