@@ -568,6 +568,9 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .auth-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .auth-form .btn { width: 100%; justify-content: center; }
 .auth .hint-text { margin-top: 14px; }
+.table-wrap { overflow-x: auto; }
+.rep-table tr.sel td { background: var(--accent-soft); }
+.rep-table td { vertical-align: middle; white-space: nowrap; }
 #print-root { display: none; }
 .pr { color: #000; font: 11pt/1.4 Arial, sans-serif; }
 .pr h1 { font-size: 18pt; margin-bottom: 4pt; letter-spacing: 0; }
@@ -695,7 +698,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.7";
+const APP_VERSION = "2026-09-28.8";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1038,7 +1041,8 @@ function sanitizeState(raw) {
     if (!Number.isInteger(n) || n < 1 || n > 400) return;
     reports[n] = {
       betrieb: str(r.betrieb, 6000), vorgangTitel: str(r.vorgangTitel, 200), vorgang: str(r.vorgang, 4000), schule: str(r.schule, 4000),
-      hBetrieb: str(r.hBetrieb, 10), hSchule: str(r.hSchule, 10), done: !!r.done, savedAt: num(r.savedAt) ?? Date.now()
+      hBetrieb: str(r.hBetrieb, 10), hSchule: str(r.hSchule, 10), done: !!r.done, savedAt: num(r.savedAt) ?? Date.now(),
+      sick: arr(r.sick).filter(isKey).slice(0, 7), nr: Number.isInteger(r.nr) && r.nr > 0 && r.nr < 1000 ? r.nr : 0, from: keyOr(r.from), to: keyOr(r.to)
     };
   });
   const flags = obj(s.flags);
@@ -1296,8 +1300,9 @@ function collectWeek(n) {
 }
 function reportFor(n) {
   const saved = state.reports[n];
-  if (saved) return { ...saved, saved: true };
-  return { ...collectWeek(n), vorgangTitel: "", vorgang: "", done: false, saved: false };
+  if (saved) return { ...saved, sick: [...(saved.sick || [])], saved: true };
+  const sick = weekRange(n).days.filter(k => state.days[k] && state.days[k].status === "krank");
+  return { ...collectWeek(n), vorgangTitel: "", vorgang: "", done: false, saved: false, sick, nr: 0, from: "", to: "" };
 }
 /* Vorschläge für den Nachweis (Immobilienkaufleute, Hausverwaltung, erstes Ausbildungsjahr); {sw} = Verwaltungssoftware */
 const GEN = {
@@ -1341,31 +1346,95 @@ const GEN = {
     PuG: ["Jugend- und Auszubildendenvertretung, Mitbestimmung", "Sozialversicherung: Zweige und Beiträge", "Arbeitsvertrag und Arbeitsschutz", "Grundrechte im Grundgesetz", "Demokratie und Wahlen"]
   }
 };
-function suggestWeek(n) {
-  const fresh = collectWeek(n), w = weekRange(n), sw = state.settings.profile.software || "der Verwaltungssoftware";
+/* Zufallsbericht aus dem großen Pool (berichtsheft-pool.json auf dem Server), offline aus GEN */
+let POOL = null;
+async function loadPool() {
+  if (POOL && !POOL.fallback) return POOL;
+  try {
+    const r = await fetch("berichtsheft-pool.json", { cache: "no-cache" });
+    if (r.ok) { const p = await r.json(); if (p && Array.isArray(p.items) && p.items.length) POOL = p; }
+  } catch (e) { /* offline oder file:// */ }
+  if (!POOL) POOL = { slots: {}, items: GEN.betrieb.map(t => ({ c: "klein", w: 1, t })), vorgang: GEN.vorgang, schule: GEN.schule, fallback: true };
+  return POOL;
+}
+const dayList = keys => keys.map(k => `${WD[pkey(k).getDay()]} ${fmtDs(k)}`).join(", ");
+const hNum = x => String(Math.round(x * 100) / 100).replace(".", ",");
+function randomWeek(n, sick, pool) {
+  const w = weekRange(n), sw = state.settings.profile.software || "der Verwaltungssoftware", sickSet = new Set(sick || []);
   const used = new Set();
   Object.entries(state.reports).forEach(([k, r]) => { if (Number(k) !== n) [r.betrieb, r.schule, r.vorgangTitel].forEach(t => bullet(t).forEach(l => used.add(norm(l.replace(/^[-–•>\s]+/, ""))))); });
+  const rnd = a => a[Math.floor(Math.random() * a.length)];
   const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const fresh1st = list => [...shuffle(list.filter(t => !used.has(norm(t)))), ...shuffle(list.filter(t => used.has(norm(t))))];
-  const fill = t => t.replace(/\{sw\}/g, sw);
-  /* Echte Einträge der Woche zuerst, dann auffüllen bis 7 Stichpunkte */
-  const own = bullet(fresh.betrieb).map(l => l.replace(/^[-–•>\s]+/, ""));
-  const betrieb = [...own, ...fresh1st(GEN.betrieb.map(fill)).filter(t => !own.some(o => norm(o) === norm(t)))].slice(0, Math.max(7, own.length));
-  const [vt, vs] = fresh1st(GEN.vorgang.map(v => v[0])).map(t => GEN.vorgang.find(v => v[0] === t))[0];
-  const sm = w.days.reduce((s, k) => s + schoolMins(k), 0);
-  let schule = fresh.schule;
-  if (sm) {
-    const subs = subjects().filter(s => GEN.schule[s]);
-    const keys = subs.length ? subs : Object.keys(GEN.schule);
-    const picks = keys.map(s => fresh1st(GEN.schule[s].map(t => `${s}: ${t}`)));
-    const out = [];
-    for (let i = 0; out.length < 5 && i < 5; i++) picks.forEach(p => { if (out.length < 5 && p[i]) out.push(p[i]); });
-    schule = [...bullet(fresh.schule).filter(l => !/^-?(Berufsschule erst|Kein)/.test(l)).map(l => l.replace(/^[-–•>\s]+/, "")), ...out].slice(0, 6).map(t => "-" + t).join("\n");
+  /* {slot} zufällig füllen; {slot.0}/{slot.1} nehmen Teile desselben Paars (z. B. Gewerk und passender Mangel) */
+  const fill = (t, pick = {}) => t.replace(/\{(\w+)(?:\.(\d))?\}/g, (m, k, i) => {
+    if (k === "sw") return sw;
+    const vals = (pool.slots || {})[k];
+    if (!vals || !vals.length) return m;
+    if (!(k in pick)) pick[k] = rnd(vals);
+    return Array.isArray(pick[k]) ? pick[k][Number(i) || 0] : pick[k];
+  }).replace(/Immotion/g, sw === "der Verwaltungssoftware" ? "Immotion" : sw);
+  const total = pool.items.reduce((a, it) => a + (it.w || 1), 0);
+  const pickItem = () => { let x = Math.random() * total; for (const it of pool.items) { x -= it.w || 1; if (x <= 0) return it; } return pool.items[0]; };
+  const st = k => (state.days[k] || {}).status || "";
+  const school = w.days.filter(k => schoolMins(k) > 0);
+  const work = w.days.filter(k => !school.includes(k) && !holiday(k));
+  const active = work.filter(k => !sickSet.has(k) && !["urlaub", "frei", "krank"].includes(st(k)));
+  const allSick = w.days.length > 0 && w.days.every(k => sickSet.has(k));
+  /* Betrieb: echte Einträge zuerst, dann Zufall; Umfang nach Arbeitstagen */
+  const notes = [];
+  w.days.filter(k => holiday(k)).forEach(k => notes.push(`Feiertag: ${holiday(k)} (${fmtDs(k)})`));
+  const urlaub = work.filter(k => st(k) === "urlaub" && !sickSet.has(k)), frei = work.filter(k => st(k) === "frei" && !sickSet.has(k));
+  if (urlaub.length) notes.push(`Urlaub: ${dayList(urlaub)}`);
+  if (frei.length) notes.push(`Gleittag: ${dayList(frei)}`);
+  const sickWork = work.filter(k => sickSet.has(k));
+  if (sickWork.length) notes.push(`Krank: ${dayList(sickWork)}`);
+  const seen = new Set(), own = [];
+  active.forEach(k => {
+    const add = t => { t = String(t).replace(/^[-–•>\s]+/, "").trim(); if (t && !seen.has(norm(t))) { seen.add(norm(t)); own.push(t); } };
+    state.logs.filter(l => l.date === k).forEach(l => add(l.text));
+    (state.days[k] ? state.days[k].entries : []).forEach(x => add(x.text));
+    if (k <= todayKey()) eventsOn(k).filter(e => e.kind === "termin" && e.report).forEach(e => add(e.title + (e.place ? ` (${e.place})` : "")));
+  });
+  const count = active.length ? Math.min(11, Math.max(3, active.length * 2 + 1 + Math.floor(Math.random() * 2))) : 0;
+  const lines = own.slice(0, count), tpl = new Set();
+  for (let tries = 0; lines.length < count && tries < count * 60; tries++) {
+    const it = pickItem();
+    if (tpl.has(it.t)) continue;
+    const t = fill(it.t), k = norm(t);
+    if (seen.has(k) || (used.has(k) && tries < count * 40)) continue;
+    tpl.add(it.t); seen.add(k); lines.push(t);
   }
-  const workDays = w.days.filter(k => !holiday(k) && !schoolMins(k) && !(state.days[k] && ["urlaub", "krank", "frei"].includes(state.days[k].status))).length;
+  const betrieb = allSick ? [`Krank vom ${fmtD(w.from)} bis ${fmtD(w.to)} (ganze Woche)`] : [...lines, ...notes];
+  /* Arbeitsvorgang: bevorzugt einer, der noch in keinem Nachweis steht */
+  let vorgangTitel = "", vorgang = "";
+  if (active.length && pool.vorgang.length) {
+    const vs = shuffle(pool.vorgang), v = vs.find(x => !used.has(norm(fill(x[0])))) || vs[0], pick = {};
+    vorgangTitel = fill(v[0], pick); vorgang = v[1].map(x => fill(x, pick)).join("\n");
+  }
+  /* Berufsschule: Themen passend zu den Fächern des Tages, Krankheit als Stichpunkt */
+  let schule;
+  if (!school.length) schule = collectWeek(n).schule;
+  else {
+    const out = [], taken = new Set();
+    school.filter(k => !sickSet.has(k)).forEach(k => {
+      const subs = [...new Set(lessonsOf(k).map(l => l.subject).filter(x => pool.schule[x]))];
+      const keys = shuffle(subs.length ? subs : Object.keys(pool.schule));
+      const cnt = Math.max(2, Math.min(4, Math.round(schoolMins(k) / 120)));
+      for (let i = 0; i < cnt; i++) {
+        const sub = keys[i % keys.length], opts = shuffle(pool.schule[sub]).map(t => `${sub}: ${t}`).filter(t => !taken.has(t));
+        const t = opts.find(x => !used.has(norm(x))) || opts[0];
+        if (t) { taken.add(t); out.push(t); }
+      }
+    });
+    const sickSchool = school.filter(k => sickSet.has(k));
+    if (sickSchool.length) out.push(sickSchool.length === school.length ? `Krank (Berufsschule ${dayList(sickSchool)})` : `Krank: ${dayList(sickSchool)}`);
+    schule = out.map(t => "-" + t).join("\n");
+  }
+  /* Stunden: Woche ergibt immer 8 Std. je Wochentag (40 Std.), Schulzeit zuerst */
+  const sMin = school.reduce((a, k) => a + schoolMins(k), 0), totalH = w.days.length * 8;
   return {
-    betrieb: betrieb.map(t => "-" + t).join("\n"), vorgangTitel: fill(vt), vorgang: vs.map(fill).join("\n"), schule,
-    hBetrieb: fresh.hBetrieb || (workDays ? String(workDays * 8) : ""), hSchule: fresh.hSchule
+    betrieb: betrieb.map(t => "-" + t).join("\n"), vorgangTitel, vorgang, schule,
+    hBetrieb: hNum(Math.max(0, totalH - sMin / 60)), hSchule: sMin ? hNum(sMin / 60) : ""
   };
 }
 const parseH = v => Number(String(v || "").replace(",", ".")) || 0;
@@ -1373,19 +1442,20 @@ const sumH = r => { const t = parseH(r.hBetrieb) + parseH(r.hSchule); return t ?
 const bullet = t => String(t || "").split("\n").map(s => s.trim()).filter(Boolean);
 
 /* IHK-Ausbildungsnachweis nach Vorlage (Aufbau, Felder und Reihenfolge wie Woche_1.docx) */
+const repHead = (n, r) => { const w = weekRange(n); return { nr: r.nr || n, from: r.from || w.from, to: r.to || w.to }; };
 function ihkSheet(n, r) {
-  const w = weekRange(n), p = state.settings.profile;
+  const w = repHead(n, r), p = state.settings.profile;
   const lines = t => bullet(t).map(l => `<div>${esc(l)}</div>`).join("");
   const steps = bullet(r.vorgang).map(l => `<div>${esc(/^->/.test(l) ? l : "->" + l.replace(/^[-–•>\s]+/, ""))}</div>`).join("");
   return `
   <div class="ihk">
     <table>
       <colgroup><col style="width:20mm"><col style="width:37.9mm"><col style="width:2.1mm"><col style="width:40mm"><col style="width:12mm"><col style="width:25.5mm"><col style="width:20mm"><col style="width:17.5mm"></colgroup>
-      <tr><td colspan="5" class="rl bl" style="height:11mm">Name: ${esc(p.name)}</td><td colspan="3" class="b">Ausbildungsnachweis Nr.: ${n}</td></tr>
+      <tr><td colspan="5" class="rl bl" style="height:11mm">Name: ${esc(p.name)}</td><td colspan="3" class="b">Ausbildungsnachweis Nr.: ${w.nr}</td></tr>
       <tr>
         <td colspan="2" class="rl bl">Firma: ${esc(p.firma)}</td>
         <td colspan="3" class="rl bl"><span class="b">Ausbildungsabteilung:</span><br><span style="display:block;margin-top:3mm">${esc(p.abteilung)}</span></td>
-        <td colspan="3" class="bl">Ausbildungsjahr: ${trainingYear(w.to)}<div class="b" style="margin-top:2mm">Woche: ${n}</div><div class="b" style="margin-top:1mm">vom: ${fmtD(w.from)}</div><div class="b" style="margin-top:4mm">bis: ${fmtD(w.to)}</div><div style="height:4mm"></div></td>
+        <td colspan="3" class="bl">Ausbildungsjahr: ${trainingYear(w.to)}<div class="b" style="margin-top:2mm">Woche: ${w.nr}</div><div class="b" style="margin-top:1mm">vom: ${fmtD(w.from)}</div><div class="b" style="margin-top:4mm">bis: ${fmtD(w.to)}</div><div style="height:4mm"></div></td>
       </tr>
       <tr><td colspan="7" class="rl b s8">Betriebliche Tätigkeit (bitte Ausbildungsverlauf mit der zeitlichen und sachlichen Gliederung abgleichen):</td><td class="hrs">Stunden</td></tr>
       <tr><td colspan="7" class="rl" style="height:82mm"><div style="margin-top:3mm">${lines(r.betrieb)}</div></td><td class="hrs"><div style="margin-top:3mm">${esc(r.hBetrieb)}</div></td></tr>
@@ -2332,33 +2402,27 @@ function repDraft(n) {
   return ui.rep;
 }
 function renderReport(route) {
-  const n = route.n, r = repDraft(n), w = weekRange(n), cur = Math.max(1, weekNo(todayKey()));
+  const n = route.n, r = repDraft(n), w = weekRange(n), head = repHead(n, r), cur = Math.max(1, weekNo(todayKey()));
   const saved = Object.keys(state.reports).map(Number).sort((a, b) => b - a);
   const weekOrders = state.orders.filter(o => w.days.includes(dkey(o.at)));
+  const tab = ui.repTab === "pick" ? "pick" : "edit";
   const opts = [];
   for (let i = Math.max(cur + 1, ...saved, 1); i >= 1; i--) opts.push(`<option value="${i}" ${i === n ? "selected" : ""}>Nr. ${i} · ${fmtDs(weekRange(i).from)}–${fmtD(weekRange(i).to)}${state.reports[i]?.done ? " ✓" : ""}</option>`);
-  return `
-    <div class="page-head"><div><p class="eyebrow">Schule · Berichtsheft</p><h1>Woche fertig. <span class="hl">Nachweis fertig.</span></h1><p class="lede">Ausbildungsnachweis nach IHK-Vorlage. Azubino sammelt deine Woche, du prüfst und druckst.</p></div>
-      <div class="head-actions"><button type="button" class="btn primary" data-act="rep-print">${icon("print", 16)} Drucken / PDF</button></div></div>
-    <div class="toolbar">
-      <div class="week-nav">
-        <a class="btn icon" href="#/report/${Math.max(1, n - 1)}" aria-label="Vorherige Woche">${icon("left", 18)}</a>
-        <select class="select" id="repWeek" aria-label="Woche wählen" style="width:auto">${opts.join("")}</select>
-        <a class="btn icon" href="#/report/${n + 1}" aria-label="Nächste Woche">${icon("right", 18)}</a>
-        ${n !== cur ? `<a class="btn" href="#/report/${cur}">Diese Woche</a>` : ""}
-      </div>
-      <span class="chip ${r.done ? "ok" : r.saved ? "accent" : ""}">${r.done ? "Fertig" : r.saved ? "Entwurf gespeichert" : "Automatisch zusammengestellt"}</span>
-    </div>
+  const sick = new Set(r.sick || []);
+  const editTab = `
     <div class="edit-grid">
       <form class="stack" id="repForm" style="gap:14px" autocomplete="off">
         <section class="panel panel-pad">
           <div class="sec-head"><h2>Woche ${n}: ${fmtD(w.from)} – ${fmtD(w.to)}</h2><span class="hint-text">KW ${w.kw}</span></div>
           <div class="days">${w.days.map(k => { const d = state.days[k], cnt = state.logs.filter(l => l.date === k).length + (d ? d.entries.length : 0), sm = schoolMins(k); return `
-            <div class="dayrow"><div><div class="d">${WD[pkey(k).getDay()]}, ${fmtDs(k)}</div><div class="sub">${holiday(k) ? esc(holiday(k)) : d && d.status ? DAY_STATUS[d.status] : sm ? `Schule ${fmtH(sm)} Std.` : d && workMins(d) ? `Betrieb ${fmtH(workMins(d))} Std.` : "keine Zeit"}</div></div>
-            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between"><span class="hint-text">${plural(cnt, "Eintrag", "Einträge")}${sm && d && d.school ? " · Schulthemen" : ""}</span><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("edit", 14)} Tag</button></div></div>`; }).join("")}</div>
+            <div class="dayrow"><div><div class="d">${WD[pkey(k).getDay()]}, ${fmtDs(k)}</div><div class="sub">${sick.has(k) ? "Krank" : holiday(k) ? esc(holiday(k)) : d && d.status ? DAY_STATUS[d.status] : sm ? `Schule ${fmtH(sm)} Std.` : d && workMins(d) ? `Betrieb ${fmtH(workMins(d))} Std.` : "Betrieb"}</div></div>
+            <div style="display:flex;gap:8px;align-items:center;justify-content:space-between"><span class="hint-text">${plural(cnt, "Eintrag", "Einträge")}</span>
+              <span class="btn-row" style="gap:6px"><button type="button" class="btn small ${sick.has(k) ? "danger" : ""}" data-act="rep-sick" data-date="${k}" aria-pressed="${sick.has(k)}">${sick.has(k) ? "Krank ✓" : "Krank"}</button><button type="button" class="btn small" data-act="day" data-date="${k}">${icon("edit", 14)} Tag</button></span></div></div>`; }).join("")}</div>
+          <p class="hint-text" style="margin-top:8px">„Krank“ markieren, dann „Zufallsbericht“: kranke Tage stehen als Stichpunkt im Bericht, an Schultagen unter Berufsschule.</p>
         </section>
         <section class="panel panel-pad stack" style="gap:12px">
-          <div class="field"><label for="rBetrieb">Betriebliche Tätigkeit <span class="hint-text">– ein Stichpunkt pro Zeile</span></label><textarea class="textarea" id="rBetrieb" rows="9">${esc(r.betrieb)}</textarea></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-gen">${icon("bolt", 15)} Zufallsbericht erzeugen</button><span class="hint-text" style="align-self:center">Ergibt immer ${w.days.length * 8} Std. · jeder Klick neu · danach frei bearbeitbar</span></div>
+          <div class="field"><label for="rBetrieb">Betriebliche Tätigkeit <span class="hint-text">– ein Stichpunkt pro Zeile</span></label><textarea class="textarea" id="rBetrieb" rows="10">${esc(r.betrieb)}</textarea></div>
           <div class="form"><div class="field"><label for="rHB">Stunden Betrieb</label><input class="input" id="rHB" inputmode="decimal" value="${esc(r.hBetrieb)}"></div><div class="field"><label for="rHS">Stunden Berufsschule</label><input class="input" id="rHS" inputmode="decimal" value="${esc(r.hSchule)}"></div></div>
           <div class="field"><label for="rVT">Arbeitsvorgang dieser Woche (Überschrift)</label><input class="input" id="rVT" value="${esc(r.vorgangTitel)}" placeholder="z. B. Brief vorbereiten für den Versand"></div>
           <div class="field"><label for="rV">Schritte <span class="hint-text">– einer pro Zeile, wird mit „->“ gedruckt</span></label><textarea class="textarea" id="rV" rows="6">${esc(r.vorgang)}</textarea>
@@ -2366,9 +2430,9 @@ function renderReport(route) {
           <div class="field"><label for="rS">Berufsschule (Themen des Unterrichts)</label><textarea class="textarea" id="rS" rows="5">${esc(r.schule)}</textarea></div>
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="rep-save">Speichern</button>
+            <button type="button" class="btn" data-act="rep-pdf">${icon("print", 15)} PDF speichern</button>
             <button type="button" class="btn" data-act="rep-done">${r.done ? "Wieder als Entwurf" : "Als fertig markieren"}</button>
-            <button type="button" class="btn" data-act="rep-gen">${icon("bolt", 15)} Vorschlag erzeugen</button>
-            <button type="button" class="btn" data-act="rep-regen">${icon("reset", 15)} Neu aus Einträgen</button>
+            <button type="button" class="btn" data-act="rep-regen">${icon("reset", 15)} Nur echte Einträge</button>
             ${r.saved ? `<button type="button" class="btn danger" data-act="rep-delete">Löschen</button>` : ""}
           </div>
         </section>
@@ -2376,9 +2440,52 @@ function renderReport(route) {
       <div>
         <div class="sec-head"><h2>Vorschau (A4)</h2><span class="hint-text">Gesamt ${esc(sumH(r)) || "0"} Std.</span></div>
         <div class="sheet-wrap" id="sheetPreview">${ihkSheet(n, r)}</div>
-        ${saved.length ? `<section class="panel panel-pad" style="margin-top:14px"><div class="sec-head"><h2>Gespeicherte Nachweise</h2></div>${saved.map(i => `<div class="item"><a class="link-btn grow" href="#/report/${i}">Nr. ${i} · ${fmtD(weekRange(i).from)} – ${fmtD(weekRange(i).to)}</a><span class="chip ${state.reports[i].done ? "ok" : ""}">${state.reports[i].done ? "Fertig" : "Entwurf"}</span></div>`).join("")}</section>` : ""}
       </div>
     </div>`;
+  const maxN = Math.max(cur + 1, ...saved, 1), rows = [];
+  for (let i = maxN; i >= 1; i--) {
+    const rr = state.reports[i], h = repHead(i, rr || {});
+    rows.push(`<tr ${i === n ? 'class="sel"' : ""}><td>${h.nr}${h.nr !== i ? ` <span class="hint-text">(Woche ${i})</span>` : ""}</td><td>KW ${weekRange(i).kw}</td><td>${fmtD(h.from)} – ${fmtD(h.to)}</td><td>${rr ? `<span class="chip ${rr.done ? "ok" : "accent"}">${rr.done ? "Fertig" : "Entwurf"}</span>` : `<span class="hint-text">leer</span>`}</td>
+      <td class="btn-row" style="justify-content:flex-end;gap:6px"><button type="button" class="btn small" data-act="rep-open" data-value="${i}">Öffnen</button>${rr ? `<button type="button" class="btn small" data-act="rep-pdf" data-value="${i}">PDF</button>` : ""}</td></tr>`);
+  }
+  const pickTab = `
+    <div class="edit-grid">
+      <div class="stack" style="gap:14px">
+        <section class="panel panel-pad">
+          <div class="sec-head"><h2>Woche über ein Datum wählen</h2></div>
+          <form class="form" id="repDateForm"><div class="field"><label for="rpDate">Datum in der Woche</label><input class="input" id="rpDate" type="date" value="${esc(w.from)}"></div>
+            <div class="btn-row" style="align-self:end"><button type="submit" class="btn primary">Woche öffnen</button></div></form>
+        </section>
+        <section class="panel panel-pad">
+          <div class="sec-head"><h2>Nummer und Zeitraum für Nr. ${n}</h2></div>
+          <p class="hint-text" style="margin-bottom:10px">Automatisch: Nr. ${n}, ${fmtD(w.from)} – ${fmtD(w.to)}. Leer lassen für automatisch.</p>
+          <form class="form" id="repHeadForm">
+            <div class="field"><label for="rpNr">Nachweis-Nr.</label><input class="input" id="rpNr" type="number" min="1" max="999" value="${r.nr || ""}" placeholder="${n}"></div>
+            <div class="field"><label for="rpFrom">vom</label><input class="input" id="rpFrom" type="date" value="${esc(r.from || "")}"></div>
+            <div class="field"><label for="rpTo">bis</label><input class="input" id="rpTo" type="date" value="${esc(r.to || "")}"></div>
+            <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Übernehmen und speichern</button><button type="button" class="btn" data-act="rep-head-reset">Automatisch</button></div>
+          </form>
+        </section>
+      </div>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Alle Nachweise</h2>${saved.length ? `<button type="button" class="btn small" data-act="rep-pdf-all">${icon("print", 14)} Alle gespeicherten als PDF</button>` : ""}</div>
+        <div class="table-wrap"><table class="table rep-table"><thead><tr><th>Nr.</th><th>KW</th><th>Zeitraum</th><th>Stand</th><th></th></tr></thead><tbody>${rows.join("")}</tbody></table></div>
+      </section>
+    </div>`;
+  return `
+    <div class="page-head"><div><p class="eyebrow">Schule · Berichtsheft</p><h1>Woche fertig. <span class="hl">Nachweis fertig.</span></h1><p class="lede">Ausbildungsnachweis nach IHK-Vorlage. Zufallsbericht erzeugen, prüfen, als PDF speichern.</p></div>
+      <div class="head-actions"><button type="button" class="btn" data-act="rep-print">${icon("print", 16)} Drucken</button><button type="button" class="btn primary" data-act="rep-pdf">${icon("print", 16)} PDF speichern</button></div></div>
+    <div class="toolbar">
+      <div class="week-nav">
+        <a class="btn icon" href="#/report/${Math.max(1, n - 1)}" aria-label="Vorherige Woche">${icon("left", 18)}</a>
+        <select class="select" id="repWeek" aria-label="Woche wählen" style="width:auto">${opts.join("")}</select>
+        <a class="btn icon" href="#/report/${n + 1}" aria-label="Nächste Woche">${icon("right", 18)}</a>
+        ${n !== cur ? `<a class="btn" href="#/report/${cur}">Diese Woche</a>` : ""}
+      </div>
+      <span class="chip ${r.done ? "ok" : r.saved ? "accent" : ""}">Nr. ${head.nr} · ${r.done ? "Fertig" : r.saved ? "Entwurf gespeichert" : "Noch nicht gespeichert"}</span>
+    </div>
+    <div class="tabs" role="group" aria-label="Bereich" style="margin-bottom:16px"><button type="button" data-act="rep-tab" data-value="edit" aria-pressed="${tab === "edit"}">Nachweis</button><button type="button" data-act="rep-tab" data-value="pick" aria-pressed="${tab === "pick"}">Auswahl: Nr. &amp; Datum</button></div>
+    ${tab === "pick" ? pickTab : editTab}`;
 }
 function readRepForm() {
   const r = ui.rep;
@@ -2390,7 +2497,7 @@ function saveReport(done) {
   const r = readRepForm();
   if (!r) return;
   if (typeof done === "boolean") r.done = done;
-  state.reports[r.n] = { betrieb: r.betrieb.trim(), hBetrieb: r.hBetrieb, hSchule: r.hSchule, vorgangTitel: r.vorgangTitel.trim(), vorgang: r.vorgang.trim(), schule: r.schule.trim(), done: !!r.done, savedAt: Date.now() };
+  state.reports[r.n] = { betrieb: r.betrieb.trim(), hBetrieb: r.hBetrieb, hSchule: r.hSchule, vorgangTitel: r.vorgangTitel.trim(), vorgang: r.vorgang.trim(), schule: r.schule.trim(), done: !!r.done, savedAt: Date.now(), sick: [...(r.sick || [])], nr: r.nr || 0, from: r.from || "", to: r.to || "" };
   r.saved = true; r.dirty = false;
   saveState();
 }
@@ -2862,6 +2969,104 @@ function printReport() {
   $("#print-root").innerHTML = ihkSheet(r.n, r);
   setTimeout(() => window.print(), 30);
 }
+/* ---------- PDF direkt speichern (A4, Aufbau wie ihkSheet, ohne Druckdialog) ---------- */
+const AFM = (() => {
+  const r = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  const b = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+  const xr = { "Ä": 667, "Ö": 778, "Ü": 722, "ä": 556, "ö": 556, "ü": 556, "ß": 611, "„": 333, "“": 333, "”": 333, "–": 556, "•": 350, "€": 556, "…": 1000, "’": 222, "‚": 222, "‘": 222 };
+  const xb = { ...xr, "Ä": 722, "ö": 611, "ü": 611, "„": 500, "“": 500, "”": 500, "’": 278, "‚": 278, "‘": 278 };
+  return { w: (ch, bold) => { const c = ch.charCodeAt(0); return c >= 32 && c <= 126 ? (bold ? b : r)[c - 32] : (bold ? xb : xr)[ch] || 556; } };
+})();
+const WINANSI = { "€": 128, "‚": 130, "„": 132, "…": 133, "‘": 145, "’": 146, "“": 147, "”": 148, "•": 149, "–": 150, "—": 151 };
+const pdfStr = t => "(" + [...String(t)].map(ch => { const c = ch.charCodeAt(0); const v = WINANSI[ch] || (c < 256 && !(c >= 128 && c < 160) ? c : 63); const x = String.fromCharCode(v); return x === "\\" || x === "(" || x === ")" ? "\\" + x : x; }).join("") + ")";
+const textW = (t, size, bold) => [...t].reduce((a, ch) => a + AFM.w(ch, bold), 0) * size / 1000;
+function wrapText(t, size, bold, maxW) {
+  const out = [];
+  String(t).split("\n").forEach(par => {
+    let line = "";
+    par.split(/\s+/).filter(Boolean).forEach(word => {
+      const tryL = line ? line + " " + word : word;
+      if (textW(tryL, size, bold) <= maxW || !line) line = tryL; else { out.push(line); line = word; }
+    });
+    out.push(line);
+  });
+  return out;
+}
+function pdfPage(n, r) {
+  const mm = v => v * 72 / 25.4, H = 297, ops = [];
+  const h = repHead(n, r), p = state.settings.profile;
+  const X = 17.5, Y = 15, W = 175, HC = X + 157.5;
+  const line = (x1, y1, x2, y2, lw = 0.5) => ops.push(`${lw} w ${mm(x1).toFixed(2)} ${mm(H - y1).toFixed(2)} m ${mm(x2).toFixed(2)} ${mm(H - y2).toFixed(2)} l S`);
+  const text = (t, x, y, size = 10, bold = false) => ops.push(`BT /${bold ? "F2" : "F1"} ${size} Tf ${mm(x).toFixed(2)} ${mm(H - y).toFixed(2)} Td ${pdfStr(t)} Tj ET`);
+  const center = (t, x1, x2, y, size = 10, bold = false) => text(t, (x1 + x2) / 2 - textW(t, size, bold) / 72 * 25.4 / 2, y, size, bold);
+  /* Block mit Stichpunkten; Schrift wird kleiner, falls es sonst nicht passt */
+  const block = (items, x, y, w, hgt, first) => {
+    for (let size = 10; size >= 7; size -= 0.5) {
+      const lh = size * 0.46, rows = [];
+      if (first) wrapText(first, size, true, mm(w)).forEach(l => rows.push([l, true]));
+      items.forEach(t => wrapText(t, size, false, mm(w)).forEach(l => rows.push([l, false])));
+      if (rows.length * lh <= hgt - 2 || size === 7) { rows.slice(0, Math.floor((hgt - 2) / lh)).forEach(([l, b], i) => text(l, x, y + 4 + i * lh, size, b)); return; }
+    }
+  };
+  const rowsH = [11, 30, 7, 82, 6, 50, 6, 42, 8, 20], ys = [Y];
+  rowsH.forEach(v => ys.push(ys[ys.length - 1] + v));
+  /* Rahmen und Linien */
+  line(X, Y, X + W, Y, 1); line(X, ys[10], X + W, ys[10], 1); line(X, Y, X, ys[10], 1); line(X + W, Y, X + W, ys[10], 1);
+  [1, 2, 4, 6, 8, 9].forEach(i => line(X, ys[i], X + W, ys[i]));
+  line(X + 112, ys[0], X + 112, ys[2]); line(X + 57.9, ys[1], X + 57.9, ys[2]);
+  line(HC, ys[2], HC, ys[9]);
+  line(X + 20, ys[9], X + 20, ys[10]); line(X + 100, ys[9], X + 100, ys[10]);
+  /* Kopf */
+  text(`Name: ${p.name || ""}`, X + 2, ys[0] + 6.5);
+  text(`Ausbildungsnachweis Nr.: ${h.nr}`, X + 114, ys[0] + 6.5, 10, true);
+  wrapText(`Firma: ${p.firma || ""}`, 10, false, mm(54)).forEach((l, i) => text(l, X + 2, ys[1] + 5 + i * 4.6));
+  text("Ausbildungsabteilung:", X + 59.5, ys[1] + 5, 10, true);
+  wrapText(p.abteilung || "", 10, false, mm(50)).forEach((l, i) => text(l, X + 59.5, ys[1] + 11 + i * 4.6));
+  text(`Ausbildungsjahr: ${trainingYear(h.to)}`, X + 114, ys[1] + 5);
+  text(`Woche: ${h.nr}`, X + 114, ys[1] + 11, 10, true);
+  text(`vom: ${fmtD(h.from)}`, X + 114, ys[1] + 17, 10, true);
+  text(`bis: ${fmtD(h.to)}`, X + 114, ys[1] + 25, 10, true);
+  /* Inhalt */
+  text("Betriebliche Tätigkeit (bitte Ausbildungsverlauf mit der zeitlichen und sachlichen Gliederung abgleichen):", X + 2, ys[2] + 4.6, 7.5, true);
+  center("Stunden", HC, X + W, ys[2] + 4.6, 9);
+  block(bullet(r.betrieb), X + 2, ys[3] + 1, 153, 82);
+  center(r.hBetrieb || "", HC, X + W, ys[3] + 6);
+  text("Beschreibung eines Arbeitsvorganges dieser Woche:", X + 2, ys[4] + 4.2, 8);
+  block(bullet(r.vorgang).map(l => /^->/.test(l) ? l : "->" + l.replace(/^[-–•>\s]+/, "")), X + 2, ys[5] + 1, 153, 50, r.vorgangTitel || "");
+  text("Berufsschule (Themen des Unterrichts):", X + 2, ys[6] + 4.2, 9, true);
+  block(bullet(r.schule), X + 2, ys[7] + 1, 153, 42);
+  center(r.hSchule || "", HC, X + W, ys[7] + 6);
+  text("Gesamtstunden", X + 2, ys[8] + 5.5, 9);
+  center(sumH(r), HC, X + W, ys[8] + 5.5);
+  /* Unterschriften */
+  text("Für die", X + 2, ys[9] + 8, 8); text("Richtigkeit", X + 2, ys[9] + 11.5, 8);
+  [[22, 57.5, "Datum"], [62, 98, "Auszubildender"], [102, 135.5, "Datum"], [139.5, 173, "Ausbilder"]].forEach(([a, b, l]) => { line(X + a, ys[9] + 11, X + b, ys[9] + 11, 0.4); text(l, X + a, ys[9] + 15, 9); });
+  return ops.join("\n");
+}
+function savePdf(list) {
+  list = list.filter(([, r]) => r);
+  if (!list.length) { toast("Bitte den Nachweis zuerst speichern."); return; }
+  const objs = [], pageIds = [];
+  const add = body => { objs.push(body); return objs.length; };
+  add("<< /Type /Catalog /Pages 2 0 R >>"); add("");
+  add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+  add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+  list.forEach(([n, r]) => {
+    const c = pdfPage(n, r), cid = add(`<< /Length ${c.length} >>\nstream\n${c}\nendstream`);
+    pageIds.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${cid} 0 R >>`));
+  });
+  objs[1] = `<< /Type /Pages /Kids [${pageIds.map(i => i + " 0 R").join(" ")}] /Count ${pageIds.length} >>`;
+  let out = "%PDF-1.4\n%âãÏÓ\n";
+  const offs = objs.map((body, i) => { const o = out.length; out += `${i + 1} 0 obj\n${body}\nendobj\n`; return o; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map(o => String(o).padStart(10, "0") + " 00000 n \n").join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  const bytes = new Uint8Array(out.length);
+  for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+  const h0 = repHead(list[0][0], list[0][1]), hl = repHead(list[list.length - 1][0], list[list.length - 1][1]);
+  const name = list.length === 1 ? `Ausbildungsnachweis_Nr_${h0.nr}_${fmtD(h0.from)}.pdf` : `Ausbildungsnachweise_Nr_${h0.nr}-${hl.nr}.pdf`;
+  download(name, bytes, "application/pdf");
+  toast(list.length === 1 ? `PDF gespeichert: ${name}` : `${list.length} Nachweise als ein PDF gespeichert.`);
+}
 function reseedSchool() {
   const k = todayKey();
   state.events = state.events.filter(e => !(e.kind === "schule" && e.date >= k));
@@ -3017,11 +3222,29 @@ async function handleAction(act, el) {
     case "rep-print": saveReport(); printReport(); break;
     case "rep-gen": {
       readRepForm();
-      Object.assign(ui.rep, suggestWeek(ui.rep.n));
+      const pool = await loadPool();
+      Object.assign(ui.rep, randomWeek(ui.rep.n, ui.rep.sick, pool));
       ui.rep.dirty = true;
-      render(); toast("Vorschlag erstellt. Bitte prüfen, anpassen und speichern.", { ms: 6000 });
+      render(); toast(`Zufallsbericht erstellt${pool.fallback ? " (offline, kleiner Vorrat)" : ""}. Bitte prüfen und speichern.`, { ms: 6000 });
       break;
     }
+    case "rep-sick": {
+      readRepForm();
+      const k = el.dataset.date, set = new Set(ui.rep.sick || []);
+      if (set.has(k)) set.delete(k); else set.add(k);
+      ui.rep.sick = [...set].sort(); ui.rep.dirty = true;
+      render();
+      break;
+    }
+    case "rep-tab": readRepForm(); ui.repTab = val; render(); break;
+    case "rep-open": ui.repTab = "edit"; go(`/report/${val}`); break;
+    case "rep-head-reset": readRepForm(); Object.assign(ui.rep, { nr: 0, from: "", to: "" }); saveReport(); render(); toast("Nummer und Zeitraum wieder automatisch."); break;
+    case "rep-pdf": {
+      if (val) { const i = Number(val); savePdf([[i, state.reports[i]]]); break; }
+      saveReport(); savePdf([[ui.rep.n, state.reports[ui.rep.n]]]);
+      break;
+    }
+    case "rep-pdf-all": savePdf(Object.keys(state.reports).map(Number).sort((a, b) => a - b).map(i => [i, state.reports[i]])); break;
     case "rep-regen": {
       const n = ui.rep.n, fresh = collectWeek(n);
       readRepForm();
@@ -3203,6 +3426,15 @@ document.addEventListener("submit", e => {
     });
     [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
+  } else if (f.id === "repDateForm") {
+    const k = keyOr($("#rpDate").value), i = k ? weekNo(k) : 0;
+    if (i >= 1) { ui.repTab = "edit"; go(`/report/${i}`); } else toast("Bitte ein Datum ab Ausbildungsbeginn wählen.");
+  } else if (f.id === "repHeadForm") {
+    readRepForm();
+    const nr = parseInt($("#rpNr").value, 10), from = keyOr($("#rpFrom").value), to = keyOr($("#rpTo").value);
+    if (from && to && to < from) { toast("„bis“ liegt vor „vom“."); return; }
+    Object.assign(ui.rep, { nr: nr > 0 && nr < 1000 ? nr : 0, from, to });
+    saveReport(); render(); toast("Nummer und Zeitraum gespeichert.");
   } else if (f.id === "syncForm" || f.id === "authForm") {
     signIn(false);
   } else if (f.id === "timeForm") {

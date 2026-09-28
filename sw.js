@@ -1,6 +1,6 @@
 /* Azubino – Offline-Speicher. Bei jeder neuen Version CACHE hochzählen. */
-const CACHE = "azubino-v7";
-const FILES = ["./", "./index.html", "./arbeitsbuddy.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
+const CACHE = "azubino-v8";
+const FILES = ["./", "./index.html", "./arbeitsbuddy.html", "./manifest.webmanifest", "./berichtsheft-pool.json", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
