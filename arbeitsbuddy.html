@@ -725,7 +725,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-28.12";
+const APP_VERSION = "2026-09-29.1";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1387,6 +1387,7 @@ const GEN = {
     KSC: ["Kaufmännisches Rechnen: Dreisatz", "Prozentrechnung", "Zinsrechnung", "Inventur, Inventar und Bilanz", "Bestandskonten und Buchungssätze", "Aufgaben der Buchführung"],
     D: ["Geschäftsbriefe und E-Mails nach DIN 5008", "Protokoll und Bericht schreiben", "Kommunikation im Beruf", "Telefonieren im Büro", "Zusammenfassen von Sachtexten"],
     E: ["Introducing yourself and your company", "Describing jobs and departments", "Telephoning and taking messages", "Writing short business e-mails", "Describing a flat or house"],
+    WiB: ["Duales System und Ausbildungsordnung", "Ausbildungsvertrag: Rechte und Pflichten", "Jugendarbeitsschutz und Kündigungsschutz", "Brutto-/Nettoentgelt", "Betriebliche Mitbestimmung", "Tarifverträge und Sozialpartner", "Präsentationstechniken"],
     PuG: ["Jugend- und Auszubildendenvertretung, Mitbestimmung", "Sozialversicherung: Zweige und Beiträge", "Arbeitsvertrag und Arbeitsschutz", "Grundrechte im Grundgesetz", "Demokratie und Wahlen"]
   }
 };
@@ -1449,6 +1450,7 @@ function randomWeek(n, sick, pool) {
     tpl.add(it.t); seen.add(k); lines.push(t);
   }
   const betrieb = allSick ? [`Krank vom ${fmtD(w.from)} bis ${fmtD(w.to)} (ganze Woche)`] : [...lines, ...notes];
+  const meta = { count, own: own.slice(0, count), notes, allSick, active: active.length, subs: [], tail: [], noSchool: !school.length };
   /* Arbeitsvorgang: bevorzugt einer, der noch in keinem Nachweis steht */
   let vorgangTitel = "", vorgang = "";
   if (active.length && pool.vorgang.length) {
@@ -1460,24 +1462,33 @@ function randomWeek(n, sick, pool) {
   if (!school.length) schule = collectWeek(n).schule;
   else {
     /* Jedes Fach der Woche genau einmal, in Stundenplan-Reihenfolge */
+    /* Themen nach Lehrplan der Jahrgangsstufe (Ausbildungsjahr 1 = Jgst. 10) */
+    const jg = String(9 + trainingYear(w.to)), topics = sub => { const k = schoolKey(sub, pool); return k ? ((pool.schuleJahr || {})[jg] || {})[k] || pool.schule[k] : null; };
     const out = [], okDays = school.filter(k => !sickSet.has(k));
-    let subs = [...new Set(okDays.flatMap(k => lessonsOf(k).map(l => l.subject)).filter(x => pool.schule[x]))];
+    let subs = [...new Set(okDays.flatMap(k => lessonsOf(k).map(l => l.subject)).filter(x => topics(x)))];
     if (!subs.length && okDays.length) subs = Object.keys(pool.schule);
+    meta.subs = subs;
     subs.forEach(sub => {
-      const opts = shuffle(pool.schule[sub]).map(t => `${sub}: ${t}`);
+      const opts = shuffle(topics(sub)).map(t => `${sub}: ${t}`);
       out.push(opts.find(x => !used.has(norm(x))) || opts[0]);
     });
-    w.days.forEach(k => { if (!sickSet.has(k)) eventsOn(k).filter(e => e.kind === "klausur").forEach(e => out.push(`${e.title} (${WD[pkey(k).getDay()]} ${fmtDs(k)})`)); });
+    w.days.forEach(k => { if (!sickSet.has(k)) eventsOn(k).filter(e => e.kind === "klausur").forEach(e => meta.tail.push(`${e.title} (${WD[pkey(k).getDay()]} ${fmtDs(k)})`)); });
     const sickSchool = school.filter(k => sickSet.has(k));
-    if (sickSchool.length) out.push(sickSchool.length === school.length ? `Krank (Berufsschule ${dayList(sickSchool)})` : `Krank: ${dayList(sickSchool)}`);
-    schule = out.map(t => "-" + t).join("\n");
+    if (sickSchool.length) meta.tail.push(sickSchool.length === school.length ? `Krank (Berufsschule ${dayList(sickSchool)})` : `Krank: ${dayList(sickSchool)}`);
+    schule = [...out, ...meta.tail].map(t => "-" + t).join("\n");
   }
   /* Stunden: Woche ergibt immer 8 Std. je Wochentag (40 Std.), Schulzeit zuerst */
   const sMin = school.reduce((a, k) => a + schoolMins(k), 0), totalH = w.days.length * 8;
   return {
     betrieb: betrieb.map(t => "-" + t).join("\n"), vorgangTitel, vorgang, schule,
-    hBetrieb: hNum(Math.max(0, totalH - sMin / 60)), hSchule: sMin ? hNum(sMin / 60) : ""
+    hBetrieb: hNum(Math.max(0, totalH - sMin / 60)), hSchule: sMin ? hNum(sMin / 60) : "", meta
   };
+}
+/* Fach aus dem Stundenplan dem Lehrplan zuordnen (z. B. „FU-WiB“ → WiB) */
+function schoolKey(sub, pool) {
+  if (pool.schule[sub]) return sub;
+  const k = Object.keys(pool.schule).find(x => new RegExp(`(^|[^a-z])${x.toLowerCase()}($|[^a-z])`).test(sub.toLowerCase()));
+  return k || "";
 }
 const parseH = v => Number(String(v || "").replace(",", ".")) || 0;
 const sumH = r => { const t = parseH(r.hBetrieb) + parseH(r.hSchule); return t ? String(Math.round(t * 100) / 100).replace(".", ",") : ""; };
@@ -1866,13 +1877,38 @@ function renderGrades() {
 /* Lernkarten mit Wiederholung nach Kästen (1 = täglich … 5 = monatlich) */
 const BOX_DAYS = [0, 1, 3, 7, 14, 30];
 const dueCards = () => state.cards.filter(c => c.due <= todayKey());
-async function aiCard(term, subject) {
+/* KI-Aufruf über die Supabase-Funktion (Schlüssel bleibt auf dem Server) */
+async function aiCall(body) {
   if (!sync.session) throw new Error("Bitte anmelden.");
+  if (!navigator.onLine) throw new Error("Keine Internetverbindung.");
   await ensureToken();
-  const r = await fetch(`${SB.url}/functions/v1/lernkarte`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SB.key, Authorization: "Bearer " + sync.session.access_token }, body: JSON.stringify({ term, subject }) });
+  const r = await fetch(`${SB.url}/functions/v1/lernkarte`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SB.key, Authorization: "Bearer " + sync.session.access_token }, body: JSON.stringify(body) });
   const b = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(b.error || `Fehler ${r.status}`);
+  if (!r.ok) throw new Error(b.error || b.message || `Fehler ${r.status}`);
   return b;
+}
+const aiCard = (term, subject) => aiCall({ mode: "karte", term, subject, jahr: trainingYear(todayKey()) });
+/* Woche im Schuljahr (ab 1. September) */
+const schoolWeek = k => { const d = pkey(k), y = d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1; return Math.max(1, Math.floor((monday(d) - monday(new Date(y, 8, 1))) / 6048e5) + 1); };
+/* KI-Entwurf: Rahmen (Stunden, Krank, Feiertage, Klausuren) rechnet die App, Inhalte schreibt die KI im Stil der archivierten Nachweise */
+async function aiWeek(n, sick) {
+  const pool = await loadPool(), g = randomWeek(n, sick, pool), m = g.meta, w = weekRange(n);
+  const others = Object.keys(state.reports).map(Number).filter(i => i !== n).sort((a, b) => b - a);
+  const examples = others.filter(i => state.reports[i].archived).slice(0, 6).map(i => { const r = state.reports[i]; return { betrieb: r.betrieb, vorgangTitel: r.vorgangTitel, vorgang: r.vorgang, schule: r.schule }; });
+  const avoid = [...others.map(i => state.reports[i].vorgangTitel).filter(Boolean).map(t => "Arbeitsvorgang: " + t), ...others.slice(0, 4).flatMap(i => bullet(state.reports[i].betrieb)).map(t => t.replace(/^[-–•>\s]+/, ""))].slice(0, 80);
+  const res = await aiCall({
+    mode: "bericht", week: { nr: repHead(n, ui.rep || {}).nr, von: fmtD(w.from), bis: fmtD(w.to), jahr: trainingYear(w.to), schulwoche: schoolWeek(w.from) },
+    count: Math.max(m.count, m.own.length), own: m.own, subjects: m.subs, needVorgang: m.active > 0, software: state.settings.profile.software || "", examples, avoid
+  });
+  const out = { ...g, examples: examples.length };
+  if (!m.allSick && m.count && res.betrieb.length) out.betrieb = [...res.betrieb.slice(0, Math.max(m.count, m.own.length)), ...m.notes].map(t => "-" + t).join("\n");
+  if (m.active && res.vorgangTitel && res.vorgang.length) { out.vorgangTitel = res.vorgangTitel; out.vorgang = res.vorgang.join("\n"); }
+  if (!m.noSchool && m.subs.length) {
+    const fallback = bullet(g.schule).map(t => t.replace(/^-/, ""));
+    const bySub = m.subs.map(sub => res.schule.find(t => t.toLowerCase().startsWith(sub.toLowerCase() + ":")) || fallback.find(t => t.startsWith(sub + ":"))).filter(Boolean);
+    out.schule = [...bySub, ...m.tail].map(t => "-" + t).join("\n");
+  }
+  return out;
 }
 function renderCards(route) {
   const subs = [...new Set([...subjects(), ...state.cards.map(c => c.subject)])];
@@ -2878,7 +2914,7 @@ function renderReport(route) {
           <p class="hint-text" style="margin-top:8px">„Krank“ markieren, dann „Zufallsbericht“: kranke Tage stehen als Stichpunkt im Bericht, an Schultagen unter Berufsschule.</p>
         </section>
         <section class="panel panel-pad stack" style="gap:12px">
-          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-gen">${icon("bolt", 15)} Alles zufällig erzeugen</button><span class="hint-text" style="align-self:center">Oder „Zufall“ je Bereich · ergibt immer ${w.days.length * 8} Std. · danach frei bearbeitbar</span></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-ai" ${ui.repAiBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.repAiBusy ? "KI schreibt …" : "Mit KI schreiben"}</button><button type="button" class="btn" data-act="rep-gen">${icon("reset", 15)} Alles zufällig</button><span class="hint-text" style="align-self:center">KI lernt aus deinen archivierten Nachweisen, Schulthemen nach bayerischem Lehrplan · immer ${w.days.length * 8} Std. · danach frei bearbeitbar</span></div>
           <div class="field"><div class="lbl-row"><label for="rBetrieb">Betriebliche Tätigkeit <span class="hint-text">– ein Stichpunkt pro Zeile</span></label><button type="button" class="btn small" data-act="rep-gen" data-value="betrieb">${icon("bolt", 13)} Zufall</button></div><textarea class="textarea" id="rBetrieb" rows="10">${esc(r.betrieb)}</textarea></div>
           <div class="form"><div class="field"><label for="rHB">Stunden Betrieb</label><input class="input" id="rHB" inputmode="decimal" value="${esc(r.hBetrieb)}"></div><div class="field"><label for="rHS">Stunden Berufsschule</label><input class="input" id="rHS" inputmode="decimal" value="${esc(r.hSchule)}"></div></div>
           <div class="field"><div class="lbl-row"><label for="rVT">Arbeitsvorgang dieser Woche (Überschrift)</label><button type="button" class="btn small" data-act="rep-gen" data-value="vorgang">${icon("bolt", 13)} Zufall</button></div><input class="input" id="rVT" value="${esc(r.vorgangTitel)}" placeholder="z. B. Brief vorbereiten für den Versand"></div>
@@ -3713,6 +3749,23 @@ async function handleAction(act, el) {
       break;
     }
     case "rep-print": saveReport(); printReport(); break;
+    case "rep-ai": {
+      readRepForm();
+      if (ui.repAiBusy) break;
+      ui.repAiBusy = true; render();
+      const n = ui.rep.n;
+      try {
+        const g = await aiWeek(n, ui.rep.sick);
+        if (ui.rep && ui.rep.n === n) {
+          const part = { betrieb: ["betrieb", "hBetrieb", "hSchule"], vorgang: ["vorgangTitel", "vorgang"], schule: ["schule", "hBetrieb", "hSchule"] }[val];
+          if (part) part.forEach(k => { ui.rep[k] = g[k]; }); else ["betrieb", "vorgangTitel", "vorgang", "schule", "hBetrieb", "hSchule"].forEach(k => { ui.rep[k] = g[k]; });
+          ui.rep.dirty = true;
+        }
+        toast(`KI-Entwurf fertig${g.examples ? ` (gelernt aus ${plural(g.examples, "archiviertem Nachweis", "archivierten Nachweisen")})` : ""}. Bitte prüfen und speichern.`, { ms: 7000 });
+      } catch (e) { toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }); }
+      ui.repAiBusy = false; render();
+      break;
+    }
     case "rep-gen": {
       readRepForm();
       const pool = await loadPool(), g = randomWeek(ui.rep.n, ui.rep.sick, pool);
