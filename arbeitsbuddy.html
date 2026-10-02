@@ -598,6 +598,8 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .lbl-row label { margin: 0; }
 .rep-table tr.sel td { background: var(--accent-soft); }
 .rep-table td { vertical-align: middle; white-space: nowrap; }
+#schoolForm { min-width: 0; }
+#schoolForm .form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
 #print-root { display: none; }
 .pr { color: #000; font: 11pt/1.4 Arial, sans-serif; }
 .pr h1 { font-size: 18pt; margin-bottom: 4pt; letter-spacing: 0; }
@@ -725,7 +727,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-09-29.1";
+const APP_VERSION = "2026-10-02.1";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1538,7 +1540,14 @@ const ui = {
   flow: null, chatInput: ""
 };
 
+/* Nur Berichtsheft und Einstellungen anzeigen (übrige Bereiche bleiben im Code, Daten bleiben erhalten) */
+const REPORT_ONLY = true;
+const REPORT_VIEWS = ["report", "settings"];
 function parseRoute() {
+  const r = parseRouteAll();
+  return REPORT_ONLY && !REPORT_VIEWS.includes(r.view) ? { view: "report", n: Math.max(1, weekNo(todayKey())) } : r;
+}
+function parseRouteAll() {
   const h = (location.hash || "").replace(/^#\/?/, "");
   const [a, b, c] = h.split("/");
   switch (a) {
@@ -1632,6 +1641,8 @@ function curNav(route) {
 }
 function navLinks(cur, withGroups) {
   let last = "", html = "";
+  if (REPORT_ONLY) return [["report", "#/report", "book", "Berichtsheft", "o1"], ["settings", "#/settings", "sliders", "Einstellungen", "o5"]]
+    .map(([id, href, ic, label, o]) => `<a href="${href}" class="${o}" ${cur === id ? 'aria-current="page"' : ""}>${icon(ic, 19)}<span>${label}</span></a>`).join("");
   NAV.forEach(([id, href, ic, label, mobile, group]) => {
     if (withGroups && group !== last) { html += group ? `<div class="nav-group">${group}</div>` : `<div class="nav-group" style="height:0;margin:10px 0 0"></div>`; last = group; }
     const count = id === "today" && dayStats().open ? `<span class="count">${dayStats().open}</span>` : id === "homework" && openHw().length ? `<span class="count">${openHw().length}</span>` : "";
@@ -1646,9 +1657,9 @@ function renderRail(route) {
       <a class="brand" href="#/" aria-label="Azubino, zum Start">${logo("lg1")}</a>
       <nav class="nav" aria-label="Hauptnavigation">
         ${navLinks(cur, true)}
-        <a href="#/school" class="mob o2" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 20)}<span>Schule</span></a>
+        ${REPORT_ONLY ? "" : `<a href="#/school" class="mob o2" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 20)}<span>Schule</span></a>
         <span class="fab-slot o3"><button type="button" class="fab ${stampState() === "in" ? "running" : ""}" data-act="quick" aria-label="Schnellaktionen">${icon("plus", 26)}</button></span>
-        <a href="#/work" class="mob o4" ${WORK_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("building", 20)}<span>Arbeit</span></a>
+        <a href="#/work" class="mob o4" ${WORK_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("building", 20)}<span>Arbeit</span></a>`}
       </nav>
       <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}<br>Version ${APP_VERSION}${sync.session ? `<br><span id="syncState">${esc(syncLabel())}</span>` : ""}</div>
     </aside>`;
@@ -1658,11 +1669,11 @@ function renderTopbar() {
   return `
     <header class="topbar">
       <a class="m-brand" href="#/" aria-label="Azubino, zum Start">${logo("lg2")}</a>
-      <button class="search-btn" type="button" data-act="palette" aria-label="Suchen und Befehle (${MOD} K)">${icon("search", 17)}<span class="grow">Suchen …</span><kbd>${MOD} K</kbd></button>
+      ${REPORT_ONLY ? `<span class="grow"></span>` : `<button class="search-btn" type="button" data-act="palette" aria-label="Suchen und Befehle (${MOD} K)">${icon("search", 17)}<span class="grow">Suchen …</span><kbd>${MOD} K</kbd></button>`}
       <div class="top-actions">
         <a class="btn icon m-only" href="#/settings" aria-label="Einstellungen" title="Einstellungen">${icon("sliders", 18)}</a>
         <button class="btn icon" type="button" data-act="theme" aria-label="${dark ? "Helles Design" : "Dunkles Design"}" title="${dark ? "Hell" : "Dunkel"}">${icon(dark ? "sun" : "moon", 18)}</button>
-        <button class="btn primary" type="button" data-act="new-event">${icon("plus", 17)}<span class="lbl">Termin</span></button>
+        ${REPORT_ONLY ? "" : `<button class="btn primary" type="button" data-act="new-event">${icon("plus", 17)}<span class="lbl">Termin</span></button>`}
       </div>
     </header>`;
 }
@@ -1828,10 +1839,15 @@ function renderTimetable() {
     ${schoolTabs("school")}
     ${examsPanel()}
     <div class="tt">${col(4)}${col(5)}</div>
+    ${schoolFormHtml()}`;
+}
+function schoolFormHtml() {
+  const st = state.settings.school;
+  return `
     <form class="setting" id="schoolForm" style="margin-top:18px">
       <h3>Stundenplan bearbeiten</h3><p>Eine Stunde pro Zeile: „08:45-09:30 Fach | Lehrkraft | Raum“. Unterrichtszeiten zählen fürs Berichtsheft ohne Abzug der Pausen.</p>
       <div class="form">
-        ${[4, 5].map(d => `<div class="field"><span class="lab">${WDL[d]}</span><div style="display:flex;gap:6px;align-items:center"><input class="input" type="time" id="s${d}f" value="${st[d].from}" aria-label="${WDL[d]} von"> – <input class="input" type="time" id="s${d}t" value="${st[d].to}" aria-label="${WDL[d]} bis"></div>
+        ${[4, 5].map(d => `<div class="field"><span class="lab">${WDL[d]}</span><div style="display:flex;gap:6px;align-items:center;min-width:0"><input class="input" style="min-width:0" type="time" id="s${d}f" value="${st[d].from}" aria-label="${WDL[d]} von"> – <input class="input" style="min-width:0" type="time" id="s${d}t" value="${st[d].to}" aria-label="${WDL[d]} bis"></div>
           <textarea class="textarea" id="s${d}l" rows="7" aria-label="Stundenplan ${WDL[d]}">${esc(lessonLines(d))}</textarea></div>`).join("")}
       </div>
       <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="school-reseed">Berufsschultage im Kalender neu eintragen</button></div>
@@ -3004,6 +3020,7 @@ function renderSettings() {
   return `
     <div class="page-head"><div><p class="eyebrow">Allgemein · Einstellungen</p><h1>Alles nach <span class="hl">deinem Takt.</span></h1><p class="lede">Berichtsheft, Synchronisierung, Aufträge, Darstellung und Daten.</p></div></div>
     <div class="settings">
+      ${REPORT_ONLY ? schoolFormHtml().replace('style="margin-top:18px"', "") : ""}
       <form class="setting" id="profileForm">
         <h3>Berichtsheft</h3><p>Kopfdaten für den Ausbildungsnachweis. Nachweis-Nr. und Ausbildungsjahr werden ab dem Ausbildungsbeginn berechnet.</p>
         <div class="form">
@@ -3104,7 +3121,7 @@ function renderAuth() {
         <h1>Willkommen bei <span class="hl">Azubino.</span></h1>
         <p class="lede">Dein Begleiter für Ausbildung und Büroalltag. Melde dich an oder erstelle ein kostenloses Konto. Deine Daten sind nur für dich sichtbar.</p>
         <form class="form auth-form" id="authForm" autocomplete="on">
-          <div class="field"><label for="syEmail">E-Mail</label><input class="input" id="syEmail" type="email" autocomplete="username" required></div>
+          <div class="field"><label for="syEmail">E-Mail oder Benutzername</label><input class="input" id="syEmail" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
           <div class="field"><label for="syPass">Passwort</label><input class="input" id="syPass" type="password" autocomplete="current-password" minlength="6" required></div>
           <button type="submit" class="btn primary">Anmelden</button>
           <button type="button" class="btn" data-act="sync-signup">Neues Konto erstellen</button>
@@ -4267,6 +4284,7 @@ document.addEventListener("keydown", e => {
   const a = document.activeElement, tag = (a && a.tagName || "").toLowerCase();
   const typing = ["input", "textarea", "select"].includes(tag) || (a && a.isContentEditable);
   if (!sync.session) return;
+  if (REPORT_ONLY && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (ui.palette) closePalette(); else if (!dialogOpen()) openPalette(); return; }
   if (ui.palette) { paletteKeys(e); return; }
   if (dialogOpen()) {
@@ -4407,7 +4425,9 @@ async function firstSync() {
   else applyRemote(row);
 }
 async function signIn(create) {
-  const email = $("#syEmail").value.trim(), password = $("#syPass").value;
+  let email = $("#syEmail").value.trim().toLowerCase();
+  const password = $("#syPass").value;
+  if (email && !email.includes("@")) email += "@azubino.app"; /* Benutzername ohne @, z. B. „admin“ */
   if (!email || password.length < 6) { toast("Bitte E-Mail und ein Passwort mit mindestens 6 Zeichen eingeben."); return; }
   try {
     if (create) {
@@ -4452,7 +4472,7 @@ function renderSyncSetting() {
         : `
           <p>Melde dich auf PC und Handy mit demselben Konto an, dann sind deine Daten auf beiden Geräten gleich. Gespeichert wird bei Supabase (Server in Frankfurt), nur dein Login hat Zugriff.</p>
           <form class="form" id="syncForm" autocomplete="on">
-            <div class="field"><label for="syEmail">E-Mail</label><input class="input" id="syEmail" type="email" autocomplete="username"></div>
+            <div class="field"><label for="syEmail">E-Mail oder Benutzername</label><input class="input" id="syEmail" type="text" autocomplete="username" autocapitalize="none"></div>
             <div class="field"><label for="syPass">Passwort</label><input class="input" id="syPass" type="password" autocomplete="current-password" minlength="6"></div>
             <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Anmelden</button><button type="button" class="btn" data-act="sync-signup">Konto erstellen</button></div>
           </form>`}
