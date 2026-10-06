@@ -464,6 +464,15 @@ kbd { font: 600 11.5px/1 var(--font); padding: 3px 6px; border: 1px solid var(--
 .ihk .sig { padding-top: 6mm; }
 .ihk.gen { padding-top: 12mm; }
 .day-edit { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: 10px; align-items: start; }
+.lf-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 8px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.lf-row textarea { grid-column: 1 / -1; }
+.calc-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 80px; gap: 8px; }
+fieldset.quiz-q { border: 0; border-top: 1px solid var(--line); padding: 12px 0; margin: 0; }
+fieldset.quiz-q legend { padding: 0; margin-bottom: 6px; float: left; width: 100%; }
+.quiz-a { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; clear: both; }
+.quiz-a.ok { background: var(--green-soft, rgba(30,160,90,.12)); }
+.quiz-a.bad { background: var(--red-soft); }
+@media (max-width: 560px) { .lf-row { grid-template-columns: 1fr; } .calc-row { grid-template-columns: 1fr 1fr; } .calc-row > :first-child { grid-column: 1 / -1; } }
 .rp-row { gap: 10px; align-items: center; cursor: pointer; }
 .rp-row input { width: 18px; height: 18px; flex: none; }
 details.dictate { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
@@ -1823,6 +1832,7 @@ function parseRouteAll() {
     case "work": return { view: "work" };
     case "homework": return { view: "homework" };
     case "grades": return { view: "grades" };
+    case "exam": return { view: "exam" };
     case "cards": return { view: "cards", mode: b === "lernen" ? "learn" : "list" };
     case "time": return { view: "time", date: isKey(b) ? b : todayKey() };
     case "calendar": return { view: "calendar", mode: ["month", "week", "day"].includes(b) ? b : "month", date: isKey(c) ? c : todayKey() };
@@ -2179,7 +2189,7 @@ const aiCard = (term, subject) => aiCall({ mode: "karte", term, subject, jahr: t
 function privacy(json) {
   const p = state.settings.profile;
   if (!p.datenschutz) return json;
-  const words = [[p.name, "[Name]"], ...String(p.name || "").split(/\s+/).map(x => [x, "[Name]"]), [p.firma, "[Betrieb]"], [p.abteilung, "[Abteilung]"], ...(state.props || []).map(x => [x.name, "[Objekt]"])]
+  const words = [[p.name, "[Name]"], ...String(p.name || "").split(/\s+/).map(x => [x, "[Name]"]), [p.firma, "[Betrieb]"], [p.abteilung, "[Abteilung]"], ...(state.properties || []).map(x => [x.name, "[Objekt]"])]
     .filter(([w]) => w && String(w).trim().length >= 4).sort((a, b) => b[0].length - a[0].length);
   words.forEach(([w, r]) => { const e = JSON.stringify(String(w).trim()).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); json = json.replace(new RegExp(e, "gi"), r); });
   return json;
@@ -3323,7 +3333,130 @@ async function finishSetup() {
   ui.setupBusy = false; ui.setupStep = 0;
   location.hash = "#/report"; render(); toast("Eingerichtet. Viel Erfolg in der Ausbildung!");
 }
-const examCountdown = () => ""; /* EXAM_STUB */
+/* ==========================================================
+   Prüfung: Termine, Lernplan, Lernfelder, Notenrechner, Probeprüfung
+   ========================================================== */
+/* IHK-Notenschlüssel (100-Punkte-Skala) */
+const ihkNote = p => p >= 92 ? [1, "sehr gut"] : p >= 81 ? [2, "gut"] : p >= 67 ? [3, "befriedigend"] : p >= 50 ? [4, "ausreichend"] : p >= 30 ? [5, "mangelhaft"] : [6, "ungenügend"];
+/* Vorschläge, solange keine echten Termine eingetragen sind */
+function examGuess() {
+  const p = state.settings.profile, b = berufPack() || {}, end = addMonths(pkey(p.start), p.dauer || 36);
+  const mid = dkey(addMonths(pkey(p.start), Math.round((p.dauer || 36) / 2) + 1)), last = dkey(addDays(end, -60));
+  return b.pruefungsArt === "zp" ? [["Zwischenprüfung", mid], ["Abschlussprüfung", last]] : [["Abschlussprüfung Teil 1", mid], ["Abschlussprüfung Teil 2", last]];
+}
+const examTermine = () => [...state.settings.pruefung.termine].sort((a, b) => a.date.localeCompare(b.date));
+function examCountdown() {
+  const t = examTermine().find(x => x.date >= todayKey());
+  if (!t) return "";
+  const d = daysUntil(t.date);
+  return `<a class="item" href="#/exam" style="text-decoration:none"><span class="chip accent">${d === 0 ? "heute" : `in ${plural(d, "Tag", "Tagen")}`}</span><span class="grow"><strong>${esc(t.name)}</strong> · ${fmtD(t.date)}</span></a>`;
+}
+function examBereiche() {
+  const st = state.settings.pruefung, b = berufPack() || {};
+  if (st.bereiche.length) return st.bereiche;
+  return (b.pruefung || []).map(([name, gewicht]) => ({ name, gewicht, punkte: "" }));
+}
+/* Lernplan: Lernfelder bis zur Prüfung auf die Wochen verteilen */
+function lernplan(t) {
+  const b = berufPack() || {}, lf = state.settings.lernfeld, teil1 = /teil 1|zwischen/i.test(t.name);
+  const maxJ = teil1 ? 2 : 4;
+  const list = (b.lernfelder || []).filter(l => l[2] <= maxJ);
+  const weeks = Math.max(1, Math.floor(daysUntil(t.date) / 7));
+  if (!list.length || daysUntil(t.date) < 0) return [];
+  const rest = list.filter(l => (lf[l[0]] || {}).s !== "fertig"), use = rest.length ? rest : list;
+  const plan = [], learnW = Math.max(1, weeks - (weeks > 3 ? 2 : 0));
+  for (let i = 0; i < Math.min(learnW, 30); i++) {
+    const from = Math.floor(i * use.length / learnW), to = Math.max(from + 1, Math.floor((i + 1) * use.length / learnW));
+    const mon = addDays(monday(pkey(todayKey())), 7 * i);
+    const t = use.slice(from, to).map(l => `${l[0]} ${l[1]}`).join(" · ") || "Wiederholung", kw = isoWeek(mon), last = plan[plan.length - 1];
+    if (last && last[1] === t) { last[0] = last[0].replace(/–\d+$/, "") + "–" + kw; } else plan.push([`KW ${kw}`, t]);
+  }
+  if (weeks > 3) plan.push(["Letzte 2 Wochen", "Alte Prüfungen unter Zeitdruck üben, Lernkarten wiederholen, Probeprüfungen"]);
+  return plan;
+}
+function renderExam() {
+  const tab = ["lf", "calc", "quiz"].includes(ui.examTab) ? ui.examTab : "plan", b = berufPack() || {}, st = state.settings.pruefung;
+  const tabs = `<div class="tabs" role="group" aria-label="Prüfung" style="margin-bottom:16px">${[["plan", "Termine & Lernplan"], ["lf", "Lernfelder"], ["calc", "Notenrechner"], ["quiz", "Probeprüfung"]].map(([k, l]) => `<button type="button" data-act="exam-tab" data-value="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>`;
+  let body = "";
+  if (tab === "plan") {
+    const ts = examTermine(), next = ts.find(x => x.date >= todayKey());
+    body = `
+    <div class="edit-grid">
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Prüfungstermine</h2></div>
+        ${ts.length ? ts.map(t => { const d = daysUntil(t.date); return `<div class="item"><span class="grow"><strong>${esc(t.name)}</strong><div class="sub">${fmtD(t.date)} · ${d > 0 ? `noch ${plural(d, "Tag", "Tage")} (${plural(Math.floor(d / 7), "Woche", "Wochen")})` : d === 0 ? "heute" : "vorbei"}</div></span><button type="button" class="btn small icon quiet danger" data-act="exam-del" data-value="${t.id}" aria-label="Termin löschen">${icon("trash", 15)}</button></div>`; }).join("")
+          : `<p class="hint-text">Noch keine Termine. Die genauen Daten stehen in der Einladung deiner Kammer. Geschätzt: ${examGuess().map(([n, d]) => `${esc(n)} etwa ${fmtD(d).slice(3)}`).join(", ")}.</p>`}
+        <form class="form" id="examForm" style="margin-top:12px" autocomplete="off">
+          <div class="field"><label for="exName">Prüfung</label><input class="input" id="exName" list="exNames" required value="${esc((examGuess().find(([n]) => !ts.some(t => t.name === n)) || [""])[0])}"><datalist id="exNames">${examGuess().map(([n]) => `<option value="${esc(n)}"></option>`).join("")}<option value="Mündliche Prüfung"></option></datalist></div>
+          <div class="field"><label for="exDate">Datum</label><input class="input" id="exDate" type="date" required></div>
+          <div class="btn-row" style="align-self:end"><button type="submit" class="btn primary">${icon("plus", 15)} Eintragen</button></div>
+        </form>
+      </section>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Lernplan${next ? ` bis ${esc(next.name)}` : ""}</h2></div>
+        ${next ? (() => { const pl = lernplan(next); return pl.length ? `<div class="stack" style="gap:0">${pl.map(([w, t]) => `<div class="item"><strong style="min-width:110px">${esc(w)}</strong><span class="grow">${esc(t)}</span></div>`).join("")}</div><p class="hint-text" style="margin-top:8px">Fertige Lernfelder (Reiter „Lernfelder“) fallen aus dem Plan.</p>` : `<p class="hint-text">Für deinen Beruf sind keine Lernfelder hinterlegt.</p>`; })() : `<p class="hint-text">Trag einen Prüfungstermin ein, dann verteilt die App deine Lernfelder auf die Wochen bis dahin.</p>`}
+        ${(b.begriffe || []).length ? `<div class="btn-row" style="margin-top:12px"><button type="button" class="btn" data-act="exam-cards">${icon("layers", 15)} ${plural(b.begriffe.length, "Fachbegriff", "Fachbegriffe")} als Lernkarten</button></div>` : ""}
+      </section>
+    </div>`;
+  } else if (tab === "lf") {
+    const lf = state.settings.lernfeld, all = b.lernfelder || [], cur = trainingYear(todayKey());
+    body = all.length ? [1, 2, 3, 4].filter(j => all.some(l => l[2] === j)).map(j => `
+      <section class="panel panel-pad" style="margin-bottom:14px">
+        <div class="sec-head"><h2>${j}. Ausbildungsjahr${j === cur ? ` <span class="chip accent">jetzt</span>` : ""}</h2><span class="hint-text">${all.filter(l => l[2] === j && (lf[l[0]] || {}).s === "fertig").length} von ${all.filter(l => l[2] === j).length} fertig</span></div>
+        ${all.filter(l => l[2] === j).map(l => { const x = lf[l[0]] || { s: "offen", t: "" }; return `
+          <div class="lf-row">
+            <div class="grow"><strong>${esc(l[0])}</strong> ${esc(l[1])}</div>
+            <select class="select" data-lf="${esc(l[0])}" aria-label="Stand ${esc(l[0])}">${[["offen", "offen"], ["aktuell", "läuft gerade"], ["fertig", "fertig"]].map(([v, t]) => `<option value="${v}" ${x.s === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+            ${x.s === "aktuell" ? `<textarea class="textarea" data-lft="${esc(l[0])}" rows="2" placeholder="Aktuelle Themen, eines pro Zeile – landen im Berichtsheft">${esc(x.t)}</textarea>` : ""}
+          </div>`; }).join("")}
+      </section>`).join("") + `<p class="hint-text">Lernfelder „läuft gerade“ mit Themen nutzt die App für die Berufsschul-Zeilen im Berichtsheft.</p>`
+      : emptyState({ ic: "book", title: "Keine Lernfelder", text: "In den Einstellungen unter „Beruf“ deinen Beruf wählen oder ein Berufspaket mit KI erstellen." });
+  } else if (tab === "calc") {
+    const bs = examBereiche(), filled = bs.filter(x => x.punkte !== "");
+    const sumG = bs.reduce((a, x) => a + (Number(x.gewicht) || 0), 0);
+    const total = filled.length && sumG ? filled.reduce((a, x) => a + x.punkte * x.gewicht, 0) / filled.reduce((a, x) => a + (Number(x.gewicht) || 0), 0) : null;
+    const nt = total == null ? null : ihkNote(total);
+    body = `
+    <div class="edit-grid">
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Prüfungsbereiche</h2><span class="hint-text">Gewichtung zusammen ${sumG} %</span></div>
+        <form class="stack" id="calcForm" style="gap:8px" autocomplete="off">
+          ${bs.map((x, i) => `<div class="calc-row"><input class="input" id="cbN${i}" value="${esc(x.name)}" aria-label="Bereich"><input class="input" id="cbG${i}" inputmode="numeric" value="${esc(x.gewicht)}" aria-label="Gewicht in Prozent" title="Gewicht %"><input class="input" id="cbP${i}" inputmode="numeric" value="${esc(x.punkte)}" placeholder="Punkte" aria-label="Punkte"></div>`).join("")}
+          <div class="calc-row"><input class="input" id="cbN${bs.length}" placeholder="Weiterer Bereich" aria-label="Neuer Bereich"><input class="input" id="cbG${bs.length}" inputmode="numeric" placeholder="%" aria-label="Gewicht"><input class="input" id="cbP${bs.length}" inputmode="numeric" placeholder="Punkte" aria-label="Punkte"></div>
+          <div class="btn-row"><button type="submit" class="btn primary">Berechnen und speichern</button>${st.bereiche.length ? `<button type="button" class="btn" data-act="calc-reset">Bereiche zurücksetzen</button>` : ""}</div>
+          <p class="hint-text">Spalten: Bereich · Gewicht in % · erreichte Punkte (0–100). Gewichte laut Ausbildungsordnung; die Werte hier sind Orientierung.</p>
+        </form>
+      </section>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Ergebnis</h2></div>
+        ${nt ? `<div class="big-num">${String(Math.round(total * 10) / 10).replace(".", ",")} Punkte</div><p style="margin:6px 0 12px">Note <strong>${nt[0]}</strong> (${nt[1]})${filled.length < bs.length ? ` <span class="hint-text">– aus ${filled.length} von ${bs.length} Bereichen</span>` : ""}</p>
+          <p class="hint-text">${total >= 50 ? "Gesamtergebnis ausreichend oder besser." : "Unter 50 Punkten: nicht bestanden."} Bestanden ist meist nur, wenn zusätzlich die meisten Bereiche mindestens 50 Punkte haben und keiner unter 30 liegt (je nach Beruf). ${filled.some(x => x.punkte < 30) ? "<strong>Achtung: ein Bereich unter 30 Punkten.</strong>" : ""}</p>`
+          : `<p class="hint-text">Punkte eintragen und berechnen.</p>`}
+        <div class="table-wrap" style="margin-top:12px"><table class="table"><thead><tr><th>Punkte</th><th>Note</th></tr></thead><tbody>${[["100–92", "1 sehr gut"], ["unter 92–81", "2 gut"], ["unter 81–67", "3 befriedigend"], ["unter 67–50", "4 ausreichend"], ["unter 50–30", "5 mangelhaft"], ["unter 30–0", "6 ungenügend"]].map(([a, c]) => `<tr><td>${a}</td><td>${c}</td></tr>`).join("")}</tbody></table></div>
+      </section>
+    </div>`;
+  } else {
+    const q = ui.quiz, hist = [...state.quiz].reverse().slice(0, 8);
+    const opts = [...(b.pruefung || []).map(x => x[0]), ...(b.lernfelder || []).map(l => `${l[0]} ${l[1]}`)];
+    body = `
+    <section class="panel panel-pad" style="margin-bottom:14px">
+      <div class="sec-head"><h2>Neue Probeprüfung</h2></div>
+      <form class="form" id="quizForm" autocomplete="off">
+        <div class="field"><label for="qzB">Bereich oder Thema</label><input class="input" id="qzB" list="qzList" value="${esc(ui.quizBereich || opts[0] || "")}"><datalist id="qzList">${opts.map(o => `<option value="${esc(o)}"></option>`).join("")}</datalist></div>
+        <div class="field"><label for="qzN">Fragen</label><select class="select" id="qzN">${[5, 8, 10, 15].map(n => `<option ${n === 8 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+        <div class="btn-row" style="align-self:end"><button type="submit" class="btn primary" ${ui.quizBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.quizBusy ? "KI erstellt Fragen …" : "Mit KI erstellen"}</button></div>
+      </form>
+      <p class="hint-text" style="margin-top:6px">Multiple Choice im Stil der Kammerprüfung. Braucht Anmeldung und Internet.</p>
+    </section>
+    ${q ? `<section class="panel panel-pad" style="margin-bottom:14px"><div class="sec-head"><h2>${esc(q.bereich)}</h2>${q.done ? `<span class="chip ${q.right / q.fragen.length >= .5 ? "ok" : "warn"}">${q.right} von ${q.fragen.length} richtig · ${Math.round(q.right / q.fragen.length * 100)} Punkte</span>` : ""}</div>
+      ${q.fragen.map((f, i) => `<fieldset class="quiz-q"><legend><strong>${i + 1}.</strong> ${esc(f.frage)}</legend>${f.antworten.map((a, j) => { const cls = q.done ? (j === f.richtig ? "ok" : q.ans[i] === j ? "bad" : "") : ""; return `<label class="quiz-a ${cls}"><input type="radio" name="qz${i}" data-act="quiz-ans" data-q="${i}" data-value="${j}" ${q.ans[i] === j ? "checked" : ""} ${q.done ? "disabled" : ""}> ${esc(a)}</label>`; }).join("")}${q.done && f.erklaerung ? `<p class="hint-text" style="margin-top:4px">${esc(f.erklaerung)}</p>` : ""}</fieldset>`).join("")}
+      <div class="btn-row">${q.done ? `<button type="button" class="btn" data-act="quiz-close">Schließen</button>` : `<button type="button" class="btn primary" data-act="quiz-check">Auswerten</button>`}</div></section>` : ""}
+    ${hist.length ? `<section class="panel panel-pad"><div class="sec-head"><h2>Bisherige Ergebnisse</h2></div>${hist.map(h => `<div class="item"><span class="grow">${esc(h.bereich)}<div class="sub">${fmtD(dkey(h.at))}</div></span><span class="chip ${h.right / Math.max(1, h.total) >= .5 ? "ok" : "warn"}">${h.right}/${h.total}</span></div>`).join("")}</section>` : ""}`;
+  }
+  return `
+    <div class="page-head"><div><p class="eyebrow">Schule · Prüfung</p><h1>Gut vorbereitet <span class="hl">in die Prüfung.</span></h1><p class="lede">${esc(berufName())}${b.kammer ? ` · ${esc(b.kammer)}` : ""}${b.pruefungsArt === "zp" ? " · Zwischen- und Abschlussprüfung" : b.pruefungsArt ? " · gestreckte Abschlussprüfung (Teil 1 und 2)" : ""}</p></div></div>
+    ${schoolTabs("exam")}${tabs}${body}`;
+}
 /* ---------- Berufspaket in den Einstellungen ---------- */
 function berufSetting() {
   const p = state.settings.profile, b = berufPack(), own = p.beruf === "eigen" || (state.berufPack && state.berufPack.id === p.beruf);
@@ -3622,6 +3755,7 @@ function renderPage(route) {
     case "work": return renderWork();
     case "homework": return renderHomework();
     case "grades": return renderGrades();
+    case "exam": return renderExam();
     case "cards": return renderCards(route);
     case "time": return renderTime(route);
     case "settings": return renderSettings();
@@ -4472,6 +4606,25 @@ async function handleAction(act, el) {
       break;
     }
     case "rep-tab": readRepForm(); ui.repTab = val; render(); break;
+    case "exam-tab": ui.examTab = val; render(); break;
+    case "exam-del": { const snap = snapshot(); state.settings.pruefung.termine = state.settings.pruefung.termine.filter(t => t.id !== val); saveState(); render(); toastUndo("Termin gelöscht.", snap); break; }
+    case "exam-cards": {
+      const b = berufPack() || {}, have = new Set(state.cards.map(c => norm(c.front)));
+      let n = 0;
+      (b.begriffe || []).forEach(([t, e]) => { const front = `Was bedeutet „${t}“?`; if (!have.has(norm(front))) { state.cards.push({ id: uid(), subject: "Prüfung", front, back: e, box: 1, due: todayKey(), at: Date.now() }); n++; } });
+      saveState(); render(); toast(n ? `${plural(n, "Lernkarte", "Lernkarten")} angelegt (Fach „Prüfung“).` : "Alle Fachbegriffe sind schon Lernkarten."); break;
+    }
+    case "calc-reset": { const snap = snapshot(); state.settings.pruefung.bereiche = []; saveState(); render(); toastUndo("Bereiche zurückgesetzt.", snap); break; }
+    case "quiz-ans": if (ui.quiz && !ui.quiz.done) ui.quiz.ans[Number(el.dataset.q)] = Number(val); break;
+    case "quiz-check": {
+      const q = ui.quiz;
+      if (!q) break;
+      if (q.ans.some(a => a == null) && !(await confirmDialog({ title: "Noch nicht alle beantwortet", text: "Trotzdem auswerten? Offene Fragen zählen als falsch.", confirm: "Auswerten" }))) break;
+      q.done = true; q.right = q.fragen.filter((f, i) => q.ans[i] === f.richtig).length;
+      state.quiz.push({ at: Date.now(), bereich: q.bereich, total: q.fragen.length, right: q.right, wrong: q.fragen.filter((f, i) => q.ans[i] !== f.richtig).map(f => f.frage.slice(0, 200)) });
+      saveState(); render(); break;
+    }
+    case "quiz-close": ui.quiz = null; render(); break;
     case "rep-export": savePdf(Object.keys(state.reports).map(Number).sort((a, b) => a - b).map(i => [i, state.reports[i]]), { cover: true }); break;
     case "rahmen-toggle": {
       const x = rahmenStand()[Number(val)];
@@ -4742,6 +4895,25 @@ document.addEventListener("submit", async e => {
     if (!sub || !(v >= 1 && v <= 6)) { toast("Bitte Fach und eine Note zwischen 1 und 6 eingeben."); return; }
     ui.gradeSub = sub; addGrade(sub, v, $("#gType").value, keyOr($("#gDate").value), $("#gNote").value.trim());
     saveState(); render(); toast(`Note ${String(v).replace(".", ",")} in ${sub} eingetragen.`);
+  } else if (f.id === "examForm") {
+    const name = $("#exName").value.trim(), date = keyOr($("#exDate").value);
+    if (!name || !date) { toast("Bitte Name und Datum eingeben."); return; }
+    state.settings.pruefung.termine.push({ id: uid(), name: name.slice(0, 80), date });
+    saveState(); render(); toast(`${name} am ${fmtD(date)} eingetragen.`);
+  } else if (f.id === "calcForm") {
+    const out = [];
+    for (let i = 0; $(`#cbN${i}`); i++) {
+      const name = $(`#cbN${i}`).value.trim(), g = Number($(`#cbG${i}`).value.replace(",", ".")), pv = $(`#cbP${i}`).value.trim().replace(",", ".");
+      if (name) out.push({ name: name.slice(0, 100), gewicht: Math.min(100, Math.max(0, g || 0)), punkte: pv === "" ? "" : Math.min(100, Math.max(0, Number(pv) || 0)) });
+    }
+    state.settings.pruefung.bereiche = out.slice(0, 12); saveState(); render();
+  } else if (f.id === "quizForm") {
+    const bereich = $("#qzB").value.trim().slice(0, 120), anzahl = Number($("#qzN").value) || 8;
+    ui.quizBereich = bereich; ui.quizBusy = true; render();
+    aiCall({ mode: "quiz", bereich, anzahl, jahr: trainingYear(todayKey()), beruf: aiBeruf() })
+      .then(r => { if (!r.fragen || !r.fragen.length) throw new Error("keine Fragen"); ui.quiz = { bereich: bereich || "Gemischt", fragen: r.fragen, ans: r.fragen.map(() => null), done: false, right: 0 }; })
+      .catch(e => toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }))
+      .finally(() => { ui.quizBusy = false; render(); });
   } else if (f.id === "cardAiForm") {
     const term = $("#caTerm").value.trim(), subject = $("#caSub").value.trim() || "Allgemein";
     if (!term) { $("#caTerm").focus(); return; }
@@ -4825,6 +4997,11 @@ document.addEventListener("change", e => {
     saveState(); render();
   }
   else if (["aBeruf", "aLand", "aModell", "aVorlage"].includes(t.id)) { readAusb(); render(); }
+  else if (t.dataset && (t.dataset.lf || t.dataset.lft)) {
+    const k = t.dataset.lf || t.dataset.lft, lf = state.settings.lernfeld, x = lf[k] || { s: "offen", t: "" };
+    if (t.dataset.lf) x.s = t.value; else x.t = t.value.slice(0, 600);
+    lf[k] = x; saveState(); if (t.dataset.lf) render();
+  }
   else if (t.id === "taskSort") { ui.sort = t.value; render(); }
   else if (t.id === "listSort") { state.settings.sort = t.value; saveState(); render(); }
   else if (t.id === "hwSub") { ui.hwSubject = t.value; const d = $("#hwDue"); if (d) d.value = nextSchoolDay(dkey(addDays(new Date(), 1)), t.value); }
