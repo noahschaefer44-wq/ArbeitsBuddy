@@ -462,6 +462,23 @@ kbd { font: 600 11.5px/1 var(--font); padding: 3px 6px; border: 1px solid var(--
 .ihk .tl { border-top: .75pt solid #000; }
 .ihk .hrs { text-align: center; }
 .ihk .sig { padding-top: 6mm; }
+.ihk.gen { padding-top: 12mm; }
+.day-edit { display: grid; grid-template-columns: minmax(0, 1fr) 80px; gap: 10px; align-items: start; }
+.lf-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 8px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.lf-row textarea { grid-column: 1 / -1; }
+.calc-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 80px; gap: 8px; }
+fieldset.quiz-q { border: 0; border-top: 1px solid var(--line); padding: 12px 0; margin: 0; }
+fieldset.quiz-q legend { padding: 0; margin-bottom: 6px; float: left; width: 100%; }
+.quiz-a { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; clear: both; }
+.quiz-a.ok { background: var(--green-soft, rgba(30,160,90,.12)); }
+.quiz-a.bad { background: var(--red-soft); }
+@media (max-width: 560px) { .lf-row { grid-template-columns: 1fr; } .calc-row { grid-template-columns: 1fr 1fr; } .calc-row > :first-child { grid-column: 1 / -1; } }
+.field.warn-note, .warn-note { display: flex; flex-direction: row; gap: 8px; align-items: flex-start; background: var(--red-soft); color: var(--ink, inherit); padding: 8px 10px; border-radius: 8px; font-size: .92em; }
+.rp-row { gap: 10px; align-items: center; cursor: pointer; }
+.rp-row input { width: 18px; height: 18px; flex: none; }
+details.dictate { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+details.dictate summary { cursor: pointer; display: flex; gap: 8px; align-items: center; font-weight: 600; }
+.ihk .gen-title { width: 175mm; display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3mm; }
 
 /* ---------- Einstellungen, Formulare ---------- */
 .settings { display: grid; gap: 14px; max-width: 840px; }
@@ -599,6 +616,18 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 .rep-table tr.sel td { background: var(--accent-soft); }
 .rep-table td { vertical-align: middle; white-space: nowrap; }
 #schoolForm { min-width: 0; }
+.setup-wrap { max-width: 820px; margin: 0 auto; padding: 18px 16px 60px; }
+.setup-brand { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.setup-brand .logo-word { color: var(--ink); } .setup-brand .logo-word b { color: var(--accent-2); }
+.steps-top { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.steps-top span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 600; }
+.steps-top span.on { background: var(--accent); color: var(--accent-ink); }
+.steps-top span.done { background: var(--accent-soft); color: var(--ink); }
+fieldset.form { border: 0; padding: 0; margin: 0; min-width: 0; }
+.wd-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wd-row .check-line { min-width: 64px; min-height: 0; }
+.wd-row .input { width: auto; min-width: 0; flex: 1 1 110px; max-width: 150px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #schoolForm .form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
 #print-root { display: none; }
 .pr { color: #000; font: 11pt/1.4 Arial, sans-serif; }
@@ -727,7 +756,7 @@ legend.lab { padding: 0; margin-bottom: 6px; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-10-02.1";
+const APP_VERSION = "2026-10-06.2";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -821,6 +850,7 @@ const pad = n => String(n).padStart(2, "0");
 const dkey = d => { const x = new Date(d); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
 const pkey = k => { const [y, m, d] = String(k).split("-").map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const addMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() + n); x.setDate(x.getDate() - 1); return x; };
 const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const monday = d => { const x = startOfDay(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 const todayKey = () => dkey(new Date());
@@ -868,7 +898,8 @@ function fmtDuration(ms) {
 }
 const fmtClock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`; };
 
-/* ---------- Feiertage Bayern (Augsburg) ---------- */
+/* ---------- Feiertage für alle Bundesländer ---------- */
+const LAENDER = { BW: "Baden-Württemberg", BY: "Bayern", BE: "Berlin", BB: "Brandenburg", HB: "Bremen", HH: "Hamburg", HE: "Hessen", MV: "Mecklenburg-Vorpommern", NI: "Niedersachsen", NW: "Nordrhein-Westfalen", RP: "Rheinland-Pfalz", SL: "Saarland", SN: "Sachsen", ST: "Sachsen-Anhalt", SH: "Schleswig-Holstein", TH: "Thüringen" };
 function easter(y) {
   const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
   const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
@@ -877,30 +908,53 @@ function easter(y) {
   return new Date(y, month - 1, day);
 }
 const holCache = {};
+/* Land und Sonderfälle aus dem Profil (Augsburger Friedensfest, Mariä Himmelfahrt nur in katholischen Gemeinden Bayerns) */
+const holOpts = () => { const p = (typeof state !== "undefined" && state && state.settings.profile) || {}; return { land: p.land || "BY", augsburg: !!p.augsburg, mariae: p.mariae !== false }; };
 function holidays(y) {
-  if (holCache[y]) return holCache[y];
-  const e = easter(y), f = (m, d) => dkey(new Date(y, m - 1, d)), o = n => dkey(addDays(e, n));
-  return holCache[y] = {
-    [f(1, 1)]: "Neujahr", [f(1, 6)]: "Heilige Drei Könige", [o(-2)]: "Karfreitag", [o(1)]: "Ostermontag",
-    [f(5, 1)]: "Tag der Arbeit", [o(39)]: "Christi Himmelfahrt", [o(50)]: "Pfingstmontag", [o(60)]: "Fronleichnam",
-    [f(8, 8)]: "Augsburger Friedensfest", [f(8, 15)]: "Mariä Himmelfahrt", [f(10, 3)]: "Tag der Deutschen Einheit",
-    [f(11, 1)]: "Allerheiligen", [f(12, 25)]: "1. Weihnachtsfeiertag", [f(12, 26)]: "2. Weihnachtsfeiertag"
-  };
+  const o = holOpts(), key = `${y}|${o.land}|${o.augsburg}|${o.mariae}`;
+  if (holCache[key]) return holCache[key];
+  const e = easter(y), f = (m, d) => dkey(new Date(y, m - 1, d)), r = n => dkey(addDays(e, n)), L = o.land, in_ = (...ls) => ls.includes(L);
+  const h = { [f(1, 1)]: "Neujahr", [r(-2)]: "Karfreitag", [r(1)]: "Ostermontag", [f(5, 1)]: "Tag der Arbeit", [r(39)]: "Christi Himmelfahrt", [r(50)]: "Pfingstmontag", [f(10, 3)]: "Tag der Deutschen Einheit", [f(12, 25)]: "1. Weihnachtsfeiertag", [f(12, 26)]: "2. Weihnachtsfeiertag" };
+  if (in_("BW", "BY", "ST")) h[f(1, 6)] = "Heilige Drei Könige";
+  if (in_("BE") || (in_("MV") && y >= 2023)) h[f(3, 8)] = "Internationaler Frauentag";
+  if (in_("BW", "BY", "HE", "NW", "RP", "SL")) h[r(60)] = "Fronleichnam";
+  if (L === "BY" && o.augsburg) h[f(8, 8)] = "Augsburger Friedensfest";
+  if (in_("SL") || (L === "BY" && o.mariae)) h[f(8, 15)] = "Mariä Himmelfahrt";
+  if (in_("TH") && y >= 2019) h[f(9, 20)] = "Weltkindertag";
+  if (in_("BB", "MV", "SN", "ST", "TH") || (in_("HB", "HH", "NI", "SH") && y >= 2018)) h[f(10, 31)] = "Reformationstag";
+  if (in_("BW", "BY", "NW", "RP", "SL")) h[f(11, 1)] = "Allerheiligen";
+  if (in_("SN")) { const d = new Date(y, 10, 22); while (d.getDay() !== 3) d.setDate(d.getDate() - 1); h[dkey(d)] = "Buß- und Bettag"; }
+  return holCache[key] = h;
 }
 const holiday = k => holidays(pkey(k).getFullYear())[k] || "";
-/* Schulferien Bayern – nur Hinweis, Arbeitstage bleiben */
-const FERIEN = [
-  ["2026-08-03", "2026-09-14", "Sommerferien"],
-  ["2026-11-02", "2026-11-06", "Herbstferien"],
-  ["2026-11-18", "2026-11-18", "Buß- und Bettag (schulfrei)"],
-  ["2026-12-24", "2027-01-08", "Weihnachtsferien"],
-  ["2027-02-08", "2027-02-12", "Frühjahrsferien"],
-  ["2027-03-22", "2027-04-02", "Osterferien"],
-  ["2027-05-18", "2027-05-28", "Pfingstferien"],
-  ["2027-08-02", "2027-09-13", "Sommerferien"]
+/* Schulferien: aus OpenHolidays (openholidaysapi.org), gespeichert für Offline; Bayern 2026/27 als Startwert */
+const FERIEN_BY = [
+  ["2026-08-03", "2026-09-14", "Sommerferien"], ["2026-11-02", "2026-11-06", "Herbstferien"], ["2026-11-18", "2026-11-18", "Buß- und Bettag (schulfrei)"],
+  ["2026-12-24", "2027-01-08", "Weihnachtsferien"], ["2027-02-08", "2027-02-12", "Frühjahrsferien"], ["2027-03-22", "2027-04-02", "Osterferien"],
+  ["2027-05-18", "2027-05-28", "Pfingstferien"], ["2027-08-02", "2027-09-13", "Sommerferien"]
 ];
-const ferien = k => (FERIEN.find(([a, b]) => k >= a && k <= b) || [])[2] || "";
-const SCHOOL_END = "2027-07-30";
+const ferienList = () => { const f = (typeof state !== "undefined" && state && state.settings.ferien) || {}, l = holOpts().land; return f.land === l && f.list.length ? f.list : l === "BY" ? FERIEN_BY : []; };
+const ferien = k => (ferienList().find(([a, b]) => k >= a && k <= b) || [])[2] || "";
+async function refreshFerien(force = false) {
+  const p = state.settings.profile, l = p.land || "BY", f = state.settings.ferien;
+  if (!force && f.land === l && f.at && Date.now() - f.at < 30 * 864e5) return false;
+  if (!navigator.onLine) return false;
+  const from = dkey(addDays(pkey(p.start), -400)), endY = pkey(p.start).getFullYear() + Math.ceil((p.dauer || 36) / 12) + 1;
+  const list = [];
+  try {
+    for (let y = Number(from.slice(0, 4)); y <= endY; y += 2) {
+      const r = await fetch(`https://openholidaysapi.org/SchoolHolidays?countryIsoCode=DE&subdivisionCode=DE-${l}&languageIsoCode=DE&validFrom=${y}-01-01&validTo=${y + 1}-12-31`);
+      if (!r.ok) throw new Error(r.status);
+      (await r.json()).forEach(x => { if (isKey(x.startDate) && isKey(x.endDate)) list.push([x.startDate, x.endDate, str(((x.name || [])[0] || {}).text, 60) || "Ferien"]); });
+    }
+  } catch (e) { return false; }
+  const seen = new Set();
+  state.settings.ferien = { land: l, at: Date.now(), list: list.filter(x => { const k = x.join("|"); if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a[0].localeCompare(b[0])) };
+  saveState();
+  return true;
+}
+/* Ende der Ausbildung (Beginn + Dauer in Monaten) */
+const endKey = () => { const p = state.settings.profile, d = pkey(p.start); d.setMonth(d.getMonth() + (p.dauer || 36)); return dkey(addDays(d, -1)); };
 
 /* ==========================================================
    Liegenschaften (Startdaten aus liegenschaften.csv)
@@ -951,25 +1005,59 @@ function makeEvent(p = {}) {
   return { id: uid(), title: "", date: todayKey(), allDay: false, from: "", to: "", place: "", propId: "", note: "", repeat: "keine", kind: "termin", report: true, ...p };
 }
 
-/* Berufsschultage für das Schuljahr (Do + Fr, ab 17.09.2026, ohne Ferien und Feiertage) */
-function schoolEvents(school) {
-  const out = [];
-  for (let d = pkey("2026-09-17"); dkey(d) <= SCHOOL_END; d = addDays(d, 1)) {
-    const k = dkey(d), s = school[d.getDay()];
-    if (!s || holiday(k) || ferien(k)) continue;
-    out.push(makeEvent({ title: "Berufsschule", date: k, from: s.from, to: s.to, kind: "schule", report: false }));
+/* ---------- Berufsschultage aus dem Plan erzeugen (feste Wochentage, Rhythmus oder Blockunterricht) ---------- */
+/* Schuljahresbeginn: Tag nach den Sommerferien, sonst 1. September */
+function schoolYearStart(k) {
+  const d = pkey(k), y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1;
+  const so = ferienList().find(([a, , n]) => /sommer/i.test(n) && a.slice(0, 4) === String(y));
+  return so ? dkey(addDays(pkey(so[1]), 1)) : `${y}-09-01`;
+}
+function planFor(k) {
+  const J = state.settings.schulPlan.jahre, j = trainingYear(k);
+  const have = Object.keys(J).map(Number).filter(x => x <= j).sort((a, b) => b - a);
+  return J[j] || (have.length ? J[have[0]] : null);
+}
+function schoolEvents(fromKey) {
+  const out = [], sp = state.settings.schulPlan, end = endKey();
+  let start = fromKey && fromKey > startKey() ? fromKey : startKey();
+  if (sp.schulStart && sp.schulStart > start) start = sp.schulStart;
+  for (let d = pkey(start); dkey(d) <= end; d = addDays(d, 1)) {
+    const k = dkey(d), pl = planFor(k);
+    if (!pl || holiday(k)) continue;
+    let from = "", to = "";
+    if (pl.modell === "block") {
+      if (d.getDay() === 0 || d.getDay() === 6 || !pl.bloecke.some(b => k >= b.from && k <= b.to)) continue;
+      from = pl.tagFrom; to = pl.tagTo;
+    } else if (pl.modell === "tage") {
+      const t = pl.tage.find(x => x.wd === d.getDay());
+      if (!t || ferien(k)) continue;
+      if (pl.rhythmus === 2) {
+        const idx = Math.floor((monday(d) - monday(pkey(schoolYearStart(k)))) / 6048e5);
+        if (((idx % 2) + 2) % 2 !== pl.versatz) continue;
+      }
+      from = t.from; to = t.to;
+    } else continue;
+    out.push(makeEvent({ title: "Berufsschule", date: k, from, to, kind: "schule", report: false }));
   }
   return out;
 }
+/* Wochentage mit Berufsschule laut Plan (für den Stundenplan) */
+function schoolWeekdays() {
+  const s = new Set();
+  Object.values(state.settings.schulPlan.jahre).forEach(j => { if (j.modell === "tage") j.tage.forEach(t => s.add(t.wd)); if (j.modell === "block") [1, 2, 3, 4, 5].forEach(d => s.add(d)); });
+  WD_ALL.forEach(d => { if ((state.settings.school[d] || {}).lessons?.length) s.add(d); });
+  return [...s].sort();
+}
+/* Soll-Arbeitszeit pro Arbeitstag aus Wochenstunden und Arbeitstagen */
+const tagesSoll = () => { const p = state.settings.profile; return Math.round(p.wochenStunden * 60 / Math.max(1, p.arbeitstage.length)); };
+const isArbeitstag = k => state.settings.profile.arbeitstage.includes(pkey(k).getDay());
+/* Alter am Tag k (Jugendarbeitsschutz) */
+const ageOn = k => { const g = state.settings.profile.geburt; if (!g) return 99; const a = pkey(g), d = pkey(k); let y = d.getFullYear() - a.getFullYear(); if (d.getMonth() < a.getMonth() || (d.getMonth() === a.getMonth() && d.getDate() < a.getDate())) y--; return y; };
 
 function seedState() {
-  const settings = clone(DEFAULT_SETTINGS);
-  settings.profile.start = todayKey();
-  return {
-    settings, checklists: [], history: [], properties: [],
-    events: [], orders: [], days: {}, logs: [], reports: {}, chat: [], homework: [], flows: [], flowRuns: [], grades: [], cards: [],
-    flags: { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true }
-  };
+  const st = sanitizeState({ checklists: [], settings: { profile: { start: todayKey(), setupDone: false } } });
+  st.flags = { schoolSeeded: true, seedChecked: true, timetable: true, subjectCodes: true };
+  return st;
 }
 
 /* ---------- Prüfen und Migrieren (Laden, Import, alte Version) ---------- */
@@ -1037,8 +1125,8 @@ function sanitizeDay(d) {
 function sanitizeSchool(s) {
   s = obj(s);
   const out = {};
-  [4, 5].forEach(d => {
-    const x = obj(s[d]), def = DEFAULT_SCHOOL[d];
+  WD_ALL.forEach(d => {
+    const x = obj(s[d]), def = DEFAULT_SCHOOL[d] || { from: "08:00", to: "15:00" };
     out[d] = {
       from: timeOr(x.from) || def.from, to: timeOr(x.to) || def.to,
       lessons: arr(x.lessons).filter(l => l && str(l.subject, 80)).map(l => ({ from: timeOr(l.from), to: timeOr(l.to), subject: str(l.subject, 80), teacher: str(l.teacher, 80), room: str(l.room, 40) })).slice(0, 14)
@@ -1046,16 +1134,91 @@ function sanitizeSchool(s) {
   });
   return out;
 }
+/* ---------- Profil, Bereiche, Berufsschul-Plan (allgemein für alle Ausbildungen) ---------- */
+const VORLAGEN = { "ihk": "IHK – wöchentlich (Standard)", "ihk-woche": "IHK – wöchentlich mit Arbeitsvorgang", "tag": "Täglich (IHK/HWK)", "hwk": "Handwerkskammer – wöchentlich", "eigene": "Eigene Word-Vorlage" };
+const WD_ALL = [1, 2, 3, 4, 5, 6];
+function sanitizePlanYear(y) {
+  y = obj(y);
+  return {
+    modell: ["tage", "block", "keine"].includes(y.modell) ? y.modell : "tage",
+    tage: arr(y.tage).map(t => ({ wd: Number(obj(t).wd), from: timeOr(t.from) || "08:00", to: timeOr(t.to) || "15:00" })).filter(t => WD_ALL.includes(t.wd)).slice(0, 6),
+    rhythmus: y.rhythmus === 2 ? 2 : 1, versatz: y.versatz === 1 ? 1 : 0,
+    bloecke: arr(y.bloecke).map(b => ({ from: keyOr(obj(b).from), to: keyOr(b.to) })).filter(b => b.from && b.to && b.to >= b.from).slice(0, 20),
+    tagFrom: timeOr(y.tagFrom) || "08:00", tagTo: timeOr(y.tagTo) || "15:00"
+  };
+}
+function sanitizeTage(t) {
+  const out = {};
+  Object.entries(obj(t)).slice(0, 7).forEach(([k, v]) => { if (isKey(k)) out[k] = { t: str(obj(v).t, 2000), h: str(v.h, 10) }; });
+  return out;
+}
+function sanitizeExtra(rs, pr, legacy) {
+  const p = {
+    beruf: str(pr.beruf, 60), berufName: str(pr.berufName, 120), fachrichtung: str(pr.fachrichtung, 80),
+    land: LAENDER[pr.land] ? pr.land : "BY", augsburg: typeof pr.augsburg === "boolean" ? pr.augsburg : legacy, mariae: pr.mariae !== false,
+    dauer: [18, 24, 30, 36, 42].includes(Number(pr.dauer)) ? Number(pr.dauer) : 36,
+    wochenStunden: Math.min(48, Math.max(10, Number(pr.wochenStunden) || 40)),
+    arbeitstage: arr(pr.arbeitstage).map(Number).filter(d => WD_ALL.includes(d)),
+    geburt: keyOr(pr.geburt), urlaub: Math.min(40, Math.max(0, Number(pr.urlaub) || 30)),
+    vorlage: VORLAGEN[pr.vorlage] ? pr.vorlage : legacy ? "ihk-woche" : "ihk",
+    datenschutz: pr.datenschutz !== false, setupDone: typeof pr.setupDone === "boolean" ? pr.setupDone : legacy
+  };
+  if (!p.arbeitstage.length) p.arbeitstage = [1, 2, 3, 4, 5];
+  if (legacy && !pr.beruf) { p.beruf = "immobilien"; p.berufName = "Immobilienkaufmann/-frau"; }
+  const m = obj(rs.modules);
+  const modules = { schule: typeof m.schule === "boolean" ? m.schule : legacy, arbeit: typeof m.arbeit === "boolean" ? m.arbeit : legacy, immo: typeof m.immo === "boolean" ? m.immo : false };
+  const fe = obj(rs.ferien);
+  const ferien = { land: LAENDER[fe.land] ? fe.land : "", at: num(fe.at) || 0, list: arr(fe.list).filter(x => Array.isArray(x) && isKey(x[0]) && isKey(x[1])).map(x => [x[0], x[1], str(x[2], 60) || "Ferien"]).slice(0, 200) };
+  const sp = obj(rs.schulPlan), jahre = {};
+  [1, 2, 3, 4].forEach(j => { if (obj(sp.jahre)[j]) jahre[j] = sanitizePlanYear(sp.jahre[j]); });
+  if (!jahre[1] && legacy) {
+    jahre[1] = sanitizePlanYear({ modell: "tage", tage: [{ wd: 4, from: "08:45", to: "16:00" }, { wd: 5, from: "08:00", to: "13:45" }] });
+    jahre[2] = sanitizePlanYear({ ...jahre[1], rhythmus: 2 }); jahre[3] = sanitizePlanYear({ ...jahre[1], rhythmus: 2 });
+  }
+  const schulPlan = { schulStart: keyOr(sp.schulStart) || (legacy ? "2026-09-17" : ""), jahre };
+  const lernfeld = {};
+  Object.entries(obj(rs.lernfeld)).slice(0, 40).forEach(([k, v]) => { k = str(k, 40); v = obj(v); if (k) lernfeld[k] = { s: ["offen", "aktuell", "fertig"].includes(v.s) ? v.s : "offen", t: str(v.t, 600) }; });
+  const pz = obj(rs.pruefung);
+  const pruefung = {
+    termine: arr(pz.termine).map(t => ({ id: id(obj(t).id), name: str(t.name, 80) || "Prüfung", date: keyOr(t.date) })).filter(t => t.date).slice(0, 10),
+    bereiche: arr(pz.bereiche).map(b => ({ name: str(obj(b).name, 100), gewicht: Math.min(100, Math.max(0, Number(b.gewicht) || 0)), punkte: b.punkte === "" || b.punkte == null ? "" : Math.min(100, Math.max(0, Number(b.punkte) || 0)) })).filter(b => b.name).slice(0, 12)
+  };
+  const rahmenDone = arr(rs.rahmenDone).map(x => str(x, 160)).filter(Boolean).slice(0, 80);
+  const wt = obj(rs.wordTpl);
+  const wordTpl = typeof wt.data === "string" && wt.data.length < 3e6 && /^[A-Za-z0-9+/=]+$/.test(wt.data) ? { name: str(wt.name, 120) || "Vorlage.docx", data: wt.data } : null;
+  return { p, modules, ferien, schulPlan, lernfeld, pruefung, rahmenDone, wordTpl };
+}
+/* Eigenes Berufspaket (von der KI erzeugt oder angepasst) */
+function sanitizePack(x) {
+  x = obj(x);
+  const name = str(x.name, 120);
+  if (!name) return null;
+  const list = (v, n, l) => arr(v).map(s => str(s, l)).filter(Boolean).slice(0, n);
+  return {
+    id: str(x.id, 60) || "eigen", name, kammer: ["IHK", "HWK", "andere"].includes(x.kammer) ? x.kammer : "IHK", typ: str(x.typ, 20) || "kaufm", dauer: Number(x.dauer) || 36,
+    lernfelder: arr(x.lernfelder).map(l => Array.isArray(l) ? [str(l[0], 8), str(l[1], 160), Math.min(4, Math.max(1, Number(l[2]) || 1))] : null).filter(l => l && l[1]).slice(0, 30),
+    faecher: list(x.faecher, 12, 40), taetigkeiten: list(x.taetigkeiten, 120, 160), programme: list(x.programme, 12, 40),
+    vorgaenge: arr(x.vorgaenge).map(v => Array.isArray(v) ? [str(v[0], 100), list(v[1], 8, 140)] : null).filter(v => v && v[0] && v[1].length).slice(0, 20),
+    rahmenplan: arr(x.rahmenplan).map(v => Array.isArray(v) ? [str(v[0], 160), list(v[1], 12, 40)] : null).filter(v => v && v[0]).slice(0, 40),
+    begriffe: arr(x.begriffe).map(v => Array.isArray(v) ? [str(v[0], 80), str(v[1], 600)] : null).filter(v => v && v[0] && v[1]).slice(0, 60),
+    pruefung: arr(x.pruefung).map(v => Array.isArray(v) ? [str(v[0], 100), Math.min(100, Math.max(0, Number(v[1]) || 0))] : null).filter(v => v && v[0]).slice(0, 10),
+    pruefungsArt: x.pruefungsArt === "zp" ? "zp" : "gestreckt"
+  };
+}
 function sanitizeState(raw) {
   const s = obj(raw);
   const rs = obj(s.settings), pr = obj(rs.profile), dp = DEFAULT_SETTINGS.profile;
+  /* Bestand aus der Zeit vor der Einrichtung (Immobilienkaufmann, Bayern) behält seine Einstellungen */
+  const legacy = pr.setupDone === undefined && (Object.keys(obj(s.reports)).length > 0 || arr(s.events).length > 0 || Object.keys(obj(s.days)).length > 0);
+  const ex = sanitizeExtra(rs, pr, legacy);
   const settings = {
     theme: ["system", "light", "dark"].includes(rs.theme) ? rs.theme : "system",
     animations: typeof rs.animations === "boolean" ? rs.animations : true,
     confirmDelete: typeof rs.confirmDelete === "boolean" ? rs.confirmDelete : true,
     autoRepeat: typeof rs.autoRepeat === "boolean" ? rs.autoRepeat : true,
     sort: SORTS.includes(rs.sort) ? rs.sort : "updated",
-    profile: { name: str(pr.name ?? dp.name, 80), firma: str(pr.firma ?? dp.firma, 120), abteilung: str(pr.abteilung ?? dp.abteilung, 80), software: str(pr.software, 60), start: keyOr(pr.start) || todayKey() },
+    profile: { name: str(pr.name ?? dp.name, 80), firma: str(pr.firma ?? dp.firma, 120), abteilung: str(pr.abteilung ?? dp.abteilung, 80), software: str(pr.software, 60), start: keyOr(pr.start) || todayKey(), ...ex.p },
+    modules: ex.modules, ferien: ex.ferien, schulPlan: ex.schulPlan, lernfeld: ex.lernfeld, pruefung: ex.pruefung, rahmenDone: ex.rahmenDone, wordTpl: ex.wordTpl,
     orderSteps: arr(rs.orderSteps).map(x => str(x, 200)).filter(Boolean).slice(0, 20),
     school: sanitizeSchool(rs.school)
   };
@@ -1071,6 +1234,7 @@ function sanitizeState(raw) {
     reports[n] = {
       betrieb: str(r.betrieb, 6000), vorgangTitel: str(r.vorgangTitel, 200), vorgang: str(r.vorgang, 4000), schule: str(r.schule, 4000),
       hBetrieb: str(r.hBetrieb, 10), hSchule: str(r.hSchule, 10), done: !!r.done, savedAt: num(r.savedAt) ?? Date.now(),
+      unterweisung: str(r.unterweisung, 3000), hUnterweisung: str(r.hUnterweisung, 10), tage: sanitizeTage(r.tage),
       sick: arr(r.sick).filter(isKey).slice(0, 7), archived: num(r.archived), nr: Number.isInteger(r.nr) && r.nr > 0 && r.nr < 1000 ? r.nr : 0, from: keyOr(r.from), to: keyOr(r.to)
     };
   });
@@ -1116,6 +1280,8 @@ function sanitizeState(raw) {
       Object.entries(obj(r.checks)).slice(0, 120).forEach(([k, v]) => { if (v === true && /^[\w-]{1,80}$/.test(k)) checks[k] = true; });
       return { id: id(r.id), flowId: str(r.flowId, 80), title: str(r.title, 200) || "Aufgabe", startedAt: num(r.startedAt) ?? Date.now(), doneAt: num(r.doneAt), data, checks };
     })).slice(-300),
+    berufPack: sanitizePack(s.berufPack),
+    quiz: arr(s.quiz).filter(q => q && Number.isFinite(q.at)).map(q => ({ at: q.at, bereich: str(q.bereich, 120), total: Number(q.total) || 0, right: Number(q.right) || 0, wrong: arr(q.wrong).map(x => str(x, 200)).slice(0, 20) })).slice(-200),
     flags: { schoolSeeded: !!flags.schoolSeeded, seedChecked: !!flags.seedChecked, timetable: !!flags.timetable, subjectCodes: !!flags.subjectCodes }
   };
 }
@@ -1250,18 +1416,43 @@ const eventsOn = k => state.events.filter(e => occursOn(e, k)).sort(byTime);
 /* ---------- Zeiterfassung: Soll 8 Std. Mo–Fr, Gleitzeit ---------- */
 const nowTime = () => { const x = new Date(); return `${pad(x.getHours())}:${pad(x.getMinutes())}`; };
 const breakMins = (d, now) => arr(d.breaks).reduce((n, b) => n + Math.max(0, mins(b.to || now || b.from) - mins(b.from)), 0) + (d.pause || 0);
-/* gesetzliche Mindestpause: über 6 Std. 30 Min., über 9 Std. 45 Min. */
-const legalPause = (raw, p) => Math.max(p, raw > 540 ? 45 : raw > 360 ? 30 : 0);
+/* gesetzliche Mindestpause: Erwachsene (ArbZG § 4) über 6 Std. 30 Min., über 9 Std. 45 Min.; unter 18 (JArbSchG § 11) über 4,5 Std. 30 Min., über 6 Std. 60 Min. */
+const isMinor = (k = todayKey()) => ageOn(k) < 18;
+const needPause = (raw, k) => isMinor(k) ? (raw > 360 ? 60 : raw > 270 ? 30 : 0) : (raw > 540 ? 45 : raw > 360 ? 30 : 0);
+const legalPause = (raw, p) => Math.max(p, needPause(raw));
+/* Hinweise nach Jugendarbeitsschutzgesetz bzw. Arbeitszeitgesetz */
+function arbeitsschutz(k) {
+  const d = state.days[k], out = [];
+  if (!d || !d.from || !d.to || d.to <= d.from) return out;
+  const raw = mins(d.to) - mins(d.from), work = workMins(d), minor = isMinor(k), br = breakMins(d);
+  if (br < needPause(raw, k)) out.push(`Zu wenig Pause eingetragen: mindestens ${needPause(raw, k)} Min. (${minor ? "JArbSchG § 11" : "ArbZG § 4"}). Azubino zieht sie automatisch ab.`);
+  if (minor) {
+    if (work > 480) out.push("Mehr als 8 Std. gearbeitet – unter 18 nicht erlaubt (JArbSchG § 8).");
+    if (mins(d.from) < 360 || mins(d.to) > 1200) out.push("Arbeit vor 6 Uhr oder nach 20 Uhr – unter 18 nicht erlaubt (JArbSchG § 14).");
+    if (raw > 600) out.push("Schichtzeit über 10 Std. (JArbSchG § 12).");
+  } else if (work > 600) out.push("Mehr als 10 Std. gearbeitet – nicht erlaubt (ArbZG § 3).");
+  const prev = state.days[dkey(addDays(pkey(k), -1))];
+  if (prev && prev.to && d.from) { const rest = 1440 - mins(prev.to) + mins(d.from); if (rest < (minor ? 720 : 660)) out.push(`Nur ${fmtHM(rest)} Std. Ruhezeit seit gestern – mindestens ${minor ? "12 Std. (JArbSchG § 13)" : "11 Std. (ArbZG § 5)"}.`); }
+  if (minor) { const m = monday(pkey(k)), wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + workMins(state.days[dkey(addDays(m, i))]), 0); if (wk > 2400) out.push(`Diese Woche ${fmtHM(wk)} Std. – unter 18 höchstens 40 Std. (JArbSchG § 8).`); }
+  return out;
+}
+/* Urlaubskonto im Kalenderjahr */
+function urlaubKonto(year = String(new Date().getFullYear())) {
+  const p = state.settings.profile, taken = Object.entries(state.days).filter(([k, x]) => k.startsWith(year) && x.status === "urlaub" && sollMins(k)).length;
+  const age = ageOn(`${year}-01-01`), werk = age < 16 ? 30 : age < 17 ? 27 : age < 18 ? 25 : 24;
+  const min = Math.ceil(werk * p.arbeitstage.length / 6);
+  return { taken, total: p.urlaub, rest: p.urlaub - taken, min, below: p.urlaub < min, law: age < 18 ? "JArbSchG § 19" : "BUrlG § 3" };
+}
 const workMins = d => { if (!d || !d.from || !d.to || d.to <= d.from) return 0; const raw = mins(d.to) - mins(d.from); return Math.max(0, raw - legalPause(raw, breakMins(d))); };
 const liveMins = d => { if (!d || !d.from || d.to) return workMins(d); const now = nowTime(); return Math.max(0, mins(now) - mins(d.from) - breakMins(d, now)); };
 const schoolDay = k => !holiday(k) && state.events.some(e => e.kind === "schule" && occursOn(e, k));
-const sollMins = k => { const w = pkey(k).getDay(); return k >= startKey() && w >= 1 && w <= 5 && !holiday(k) ? 480 : 0; };
+const sollMins = k => k >= startKey() && isArbeitstag(k) && !holiday(k) ? tagesSoll() : 0;
 /* Urlaub, Krank und Berufsschule zählen pauschal 8 Std. */
 function istMins(k) {
   const d = state.days[k];
-  if (d && (d.status === "urlaub" || d.status === "krank")) return 480;
+  if (d && (d.status === "urlaub" || d.status === "krank")) return tagesSoll();
   if (d && d.status === "frei") return 0;
-  if (schoolDay(k)) return 480;
+  if (schoolDay(k)) return tagesSoll();
   return workMins(d);
 }
 const counted = k => { const t = todayKey(), d = state.days[k]; return k < t || (k === t && (!!(d && (d.to || d.status)) || schoolDay(k))); };
@@ -1308,9 +1499,9 @@ const weekNo = k => Math.floor((monday(pkey(k)) - monday(pkey(startKey()))) / 60
 function weekRange(n) {
   const mon = addDays(monday(pkey(startKey())), (n - 1) * 7);
   const from = n === 1 ? startKey() : dkey(mon);
-  const days = [];
-  for (let i = 0; i < 5; i++) { const k = dkey(addDays(mon, i)); if (k >= from) days.push(k); }
-  return { from, to: dkey(addDays(mon, 4)), days, kw: isoWeek(mon) };
+  const days = [], at = state.settings.profile.arbeitstage, last = Math.max(5, ...at);
+  for (let i = 0; i < 6; i++) { const k = dkey(addDays(mon, i)); if (k >= from && at.includes(i + 1)) days.push(k); }
+  return { from, to: dkey(addDays(mon, last - 1)), days, kw: isoWeek(mon) };
 }
 function trainingYear(k) {
   const s = pkey(startKey()), d = pkey(k);
@@ -1346,9 +1537,9 @@ function collectWeek(n) {
 }
 function reportFor(n) {
   const saved = state.reports[n];
-  if (saved) return { ...saved, sick: [...(saved.sick || [])], saved: true };
+  if (saved) return { ...saved, sick: [...(saved.sick || [])], tage: JSON.parse(JSON.stringify(saved.tage || {})), saved: true };
   const sick = weekRange(n).days.filter(k => state.days[k] && state.days[k].status === "krank");
-  return { ...collectWeek(n), vorgangTitel: "", vorgang: "", done: false, saved: false, sick, nr: 0, from: "", to: "" };
+  return { ...collectWeek(n), vorgangTitel: "", vorgang: "", unterweisung: "", hUnterweisung: "", tage: {}, done: false, saved: false, sick, nr: 0, from: "", to: "" };
 }
 /* Vorschläge für den Nachweis (Immobilienkaufleute, Hausverwaltung, erstes Ausbildungsjahr); {sw} = Verwaltungssoftware */
 const GEN = {
@@ -1393,9 +1584,27 @@ const GEN = {
     PuG: ["Jugend- und Auszubildendenvertretung, Mitbestimmung", "Sozialversicherung: Zweige und Beiträge", "Arbeitsvertrag und Arbeitsschutz", "Grundrechte im Grundgesetz", "Demokratie und Wahlen"]
   }
 };
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 /* Zufallsbericht aus dem großen Pool (berichtsheft-pool.json auf dem Server), offline aus GEN */
 let POOL = null;
+/* Themen allgemeinbildender Fächer (alle Berufe) */
+const ALLG_THEMEN = [
+  [/deutsch|^d$|kommunikation/i, ["Geschäftsbriefe und E-Mails nach DIN 5008", "Protokoll und Bericht schreiben", "Kommunikation im Beruf", "Präsentationen vorbereiten", "Zusammenfassen von Sachtexten", "Argumentieren und Stellung nehmen", "Bewerbung und Lebenslauf", "Gesprächsführung und Konflikte"]],
+  [/englisch|^e$|english/i, ["Introducing yourself and your company", "Describing your job and workplace", "Telephoning and taking messages", "Writing business e-mails", "Handling enquiries and complaints", "Describing processes and products", "Job interviews"]],
+  [/sozial|politik|pug|^gk$|^sk$|wiso|wirtschaft und soz|gesellschaft/i, ["Duales System und Ausbildungsvertrag", "Jugendarbeitsschutz und Arbeitszeitgesetz", "Sozialversicherung: Zweige und Beiträge", "Tarifverträge und Mitbestimmung", "Brutto-/Nettoentgelt", "Grundrechte im Grundgesetz", "Demokratie und Wahlen", "Verbraucherschutz und Kaufvertrag"]],
+  [/relig|ethik/i, ["Werte und Normen im Berufsalltag", "Verantwortung und Gewissen", "Menschenwürde", "Religionen im Vergleich"]],
+  [/sport/i, ["Ausdauertraining", "Mannschaftsspiele", "Rückenschule und Ergonomie am Arbeitsplatz"]]
+];
+const allgThemen = sub => (ALLG_THEMEN.find(([re]) => re.test(String(sub).trim())) || [])[1];
+/* Vorrat aus dem Berufspaket (alle Berufe außer Immobilien) */
+async function genericPool() {
+  await loadBerufe();
+  const b = berufPack() || {}, typ = ["Bearbeitung von Posteingang und Postausgang", "Ablage von Dokumenten", "Teilnahme an einer Teambesprechung", "Recherche von Informationen im Internet", "Pflege von Kontaktdaten im System", "Reinigung und Ordnung am Arbeitsplatz", "Teilnahme an einer Sicherheitsunterweisung"];
+  const items = (b.taetigkeiten && b.taetigkeiten.length ? b.taetigkeiten : typ).map(t => ({ c: "klein", w: 1, t }));
+  return { slots: {}, items, vorgang: b.vorgaenge || [], schule: {}, generic: true, fallback: !(b.taetigkeiten && b.taetigkeiten.length) };
+}
 async function loadPool() {
+  if (state.settings.profile.beruf !== "immobilien") return genericPool();
   if (POOL && !POOL.fallback) return POOL;
   try {
     const r = await fetch("berichtsheft-pool.json", { cache: "no-cache" });
@@ -1462,7 +1671,28 @@ function randomWeek(n, sick, pool) {
   /* Berufsschule: Themen passend zu den Fächern des Tages, Krankheit als Stichpunkt */
   let schule;
   if (!school.length) schule = collectWeek(n).schule;
-  else {
+  else if (pool.generic) {
+    const out = [], okDays = school.filter(k => !sickSet.has(k)), j = trainingYear(w.to), lf = state.settings.lernfeld;
+    const lfs = lernfelderJahr(j).filter(l => (lf[l[0]] || {}).s !== "fertig");
+    const cur = lfs.filter(l => (lf[l[0]] || {}).s === "aktuell");
+    const lfLine = l => { const t = bullet((lf[l[0]] || {}).t).filter(x => !used.has(norm(`${l[0]}: ${x}`))); return `${l[0]}: ${t.length ? rnd(t) : l[1]}`; };
+    const lfPick = shuffle(cur.length ? cur : lfs);
+    let li = 0;
+    const subs = [...new Set(okDays.flatMap(k => lessonsOf(k).map(l => l.subject)))];
+    meta.subs = subs;
+    if (subs.length) subs.forEach(sub => {
+      const a = allgThemen(sub), m = String(sub).match(/lf\s*(\d+)/i), l = m && lfs.find(x => x[0].replace(/\D/g, "") === m[1]);
+      if (a) { const o = shuffle(a).map(t => `${sub}: ${t}`); out.push(o.find(x => !used.has(norm(x))) || o[0]); }
+      else if (l) out.push(lfLine(l));
+      else if (lfPick.length) out.push(`${sub}: ${lfLine(lfPick[li++ % lfPick.length]).replace(/^[^:]+:\s*/, "")}`);
+    });
+    else if (okDays.length) { lfPick.slice(0, Math.min(3, Math.max(1, okDays.length + 1))).forEach(l => out.push(lfLine(l))); meta.subs = out.map(x => x.split(":")[0]); }
+    if (okDays.length && !out.length) out.push("Unterricht nach Stundenplan");
+    w.days.forEach(k => { if (!sickSet.has(k)) eventsOn(k).filter(e => e.kind === "klausur").forEach(e => meta.tail.push(`${e.title} (${WD[pkey(k).getDay()]} ${fmtDs(k)})`)); });
+    const sickSchool = school.filter(k => sickSet.has(k));
+    if (sickSchool.length) meta.tail.push(sickSchool.length === school.length ? `Krank (Berufsschule ${dayList(sickSchool)})` : `Krank: ${dayList(sickSchool)}`);
+    schule = [...out, ...meta.tail].map(t => "-" + t).join("\n");
+  } else {
     /* Jedes Fach der Woche genau einmal, in Stundenplan-Reihenfolge */
     /* Themen nach Lehrplan der Jahrgangsstufe (Ausbildungsjahr 1 = Jgst. 10) */
     const jg = String(9 + trainingYear(w.to)), topics = sub => { const k = schoolKey(sub, pool); return k ? ((pool.schuleJahr || {})[jg] || {})[k] || pool.schule[k] : null; };
@@ -1480,10 +1710,10 @@ function randomWeek(n, sick, pool) {
     schule = [...out, ...meta.tail].map(t => "-" + t).join("\n");
   }
   /* Stunden: Woche ergibt immer 8 Std. je Wochentag (40 Std.), Schulzeit zuerst */
-  const sMin = school.reduce((a, k) => a + schoolMins(k), 0), totalH = w.days.length * 8;
+  const sMin = school.reduce((a, k) => a + schoolMins(k), 0), totalH = w.days.length * tagesSoll() / 60;
   return {
     betrieb: betrieb.map(t => "-" + t).join("\n"), vorgangTitel, vorgang, schule,
-    hBetrieb: hNum(Math.max(0, totalH - sMin / 60)), hSchule: sMin ? hNum(sMin / 60) : "", meta
+    hBetrieb: work.length ? hNum(Math.max(0, totalH - sMin / 60)) : "", hSchule: !work.length && sMin ? hNum(totalH) : sMin ? hNum(sMin / 60) : "", meta
   };
 }
 /* Fach aus dem Stundenplan dem Lehrplan zuordnen (z. B. „FU-WiB“ → WiB) */
@@ -1493,7 +1723,80 @@ function schoolKey(sub, pool) {
   return k || "";
 }
 const parseH = v => Number(String(v || "").replace(",", ".")) || 0;
-const sumH = r => { const t = parseH(r.hBetrieb) + parseH(r.hSchule); return t ? String(Math.round(t * 100) / 100).replace(".", ",") : ""; };
+const vorlage = () => state.settings.profile.vorlage;
+const sumH = r => {
+  const t = vorlage() === "tag" && r.tage && Object.keys(r.tage).length ? Object.values(r.tage).reduce((a, d) => a + parseH(d.h), 0)
+    : parseH(r.hBetrieb) + parseH(r.hSchule) + (vorlage() === "ihk-woche" ? 0 : parseH(r.hUnterweisung));
+  return t ? String(Math.round(t * 100) / 100).replace(".", ",") : "";
+};
+/* Täglicher Nachweis: Stichpunkte der Woche auf die Tage verteilen */
+function tageFrom(n, r) {
+  const w = weekRange(n), sick = new Set(r.sick || []), st = k => (state.days[k] || {}).status || "";
+  const clean = l => l.replace(/^[-–•>\s]+/, "");
+  const bl = bullet(r.betrieb).map(clean).filter(l => !/^(Feiertag|Urlaub|Gleittag|Krank)\b/.test(l));
+  const sl = bullet(r.schule).map(clean).filter(l => !/^Krank\b/.test(l));
+  const free = k => sick.has(k) || holiday(k) || ["urlaub", "frei", "krank"].includes(st(k));
+  const work = w.days.filter(k => !free(k) && !schoolMins(k)), school = w.days.filter(k => !free(k) && schoolMins(k));
+  const out = {}, h = hNum(tagesSoll() / 60);
+  const bySchool = {};
+  sl.forEach((l, i) => {
+    const sub = l.split(":")[0].trim(), k = school.find(d => lessonsOf(d).some(x => x.subject === sub)) || school[i % Math.max(1, school.length)];
+    if (k) (bySchool[k] = bySchool[k] || []).push(l);
+  });
+  w.days.forEach(k => {
+    let t;
+    if (sick.has(k) || st(k) === "krank") t = ["Krank"];
+    else if (holiday(k)) t = [`Feiertag: ${holiday(k)}`];
+    else if (st(k) === "urlaub") t = ["Urlaub"];
+    else if (st(k) === "frei") t = ["Gleittag"];
+    else if (schoolMins(k)) t = ["Berufsschule", ...(bySchool[k] || [])];
+    else { const i = work.indexOf(k), c = work.length; t = bl.slice(Math.floor(i * bl.length / c), Math.floor((i + 1) * bl.length / c)); }
+    out[k] = { t: t.map(x => "-" + x).join("\n"), h };
+  });
+  return out;
+}
+/* Allgemeine Nachweise (IHK wöchentlich, HWK, täglich, eigene Vorlage): ein Aufbau für Vorschau und PDF */
+function sheetSpec(n, r) {
+  const v = vorlage(), w = repHead(n, r), p = state.settings.profile, b = berufPack() || {};
+  const kammer = v === "hwk" ? "Handwerkskammer" : b.kammer === "HWK" ? "Handwerkskammer" : "Industrie- und Handelskammer";
+  const head = [["Name", p.name], ["Ausbildungsnachweis Nr.", String(w.nr)], ["Ausbildungsberuf", berufName() + (p.fachrichtung ? ` – ${p.fachrichtung}` : "")], ["Ausbildungsjahr", String(trainingYear(w.to))],
+    ["Ausbildungsbetrieb", p.firma], ["Woche vom – bis", `${fmtD(w.from)} – ${fmtD(w.to)}`], ["Abteilung", p.abteilung], ["Kalenderwoche", String(weekRange(n).kw)]];
+  let secs;
+  if (v === "tag") {
+    const tage = r.tage && Object.keys(r.tage).length ? r.tage : tageFrom(n, r);
+    secs = weekRange(n).days.map(k => ({ label: `${WDL[pkey(k).getDay()]}, ${fmtD(k)}`, lines: bullet((tage[k] || {}).t), h: (tage[k] || {}).h || "" }));
+  } else secs = [
+    { label: v === "hwk" ? "Betriebliche Tätigkeiten (ausgeführte Arbeiten)" : "Betriebliche Tätigkeiten", lines: bullet(r.betrieb), h: r.hBetrieb, big: 1 },
+    { label: v === "hwk" ? "Unterweisungen, überbetriebliche Ausbildung (ÜLU), Schulungen" : "Unterweisungen, betrieblicher Unterricht, sonstige Schulungen", lines: bullet(r.unterweisung), h: r.hUnterweisung },
+    { label: "Themen des Berufsschulunterrichts", lines: bullet(r.schule), h: r.hSchule }
+  ];
+  return { title: `Ausbildungsnachweis (${v === "tag" ? "täglich" : "wöchentlich"})`, sub: kammer, head, secs, total: sumH(r),
+    note: "Durch die nachfolgende Unterschrift wird die Richtigkeit und Vollständigkeit der obigen Angaben bestätigt.", sig: ["Datum, Unterschrift Auszubildende/r", "Datum, Unterschrift Ausbildende/r bzw. Ausbilder/in"] };
+}
+/* Höhen der Abschnitte (mm) nach Inhalt verteilen */
+function secHeights(secs, avail) {
+  const min = secs.length > 3 ? 18 : 26, wgt = secs.map(x => Math.max(2, x.lines.length + (x.big ? 4 : 0)));
+  const sum = wgt.reduce((a, b) => a + b, 0), free = Math.max(0, avail - min * secs.length);
+  return wgt.map(x => min + free * x / sum);
+}
+function genSheet(n, r) {
+  const sp = sheetSpec(n, r), hs = secHeights(sp.secs, 168);
+  const headRows = [0, 2, 4, 6].map(i => `<tr><td colspan="2" class="rl bl"><div class="s8">${esc(sp.head[i][0])}</div><div>${esc(sp.head[i][1] || "")}</div></td><td colspan="2" class="bl"><div class="s8">${esc(sp.head[i + 1][0])}</div><div>${esc(sp.head[i + 1][1] || "")}</div></td></tr>`).join("");
+  return `
+  <div class="ihk gen">
+    <div class="gen-title"><div class="b" style="font-size:13pt">${esc(sp.title)}</div><div class="s9">${esc(sp.sub)}</div></div>
+    <table>
+      <colgroup><col style="width:80mm"><col style="width:20mm"><col style="width:55mm"><col style="width:20mm"></colgroup>
+      ${headRows}
+      ${sp.secs.map((x, i) => `<tr><td colspan="3" class="rl bl b s9">${esc(x.label)}</td><td class="bl hrs s9">Stunden</td></tr>
+      <tr><td colspan="3" class="rl ${i < sp.secs.length - 1 ? "bl" : ""}" style="height:${hs[i].toFixed(1)}mm">${x.lines.map(l => `<div>${esc(l)}</div>`).join("")}</td><td class="hrs ${i < sp.secs.length - 1 ? "bl" : ""}">${esc(x.h || "")}</td></tr>`).join("")}
+      <tr><td colspan="3" class="rl tl b s9">Gesamtstunden</td><td class="hrs tl b">${esc(sp.total)}</td></tr>
+      <tr><td colspan="4" class="tl s8">${esc(sp.note)}</td></tr>
+      <tr><td colspan="2" class="rl sig s9" style="height:16mm;vertical-align:bottom">____________________________________<br>${esc(sp.sig[0])}</td><td colspan="2" class="sig s9" style="vertical-align:bottom">____________________________________<br>${esc(sp.sig[1])}</td></tr>
+    </table>
+  </div>`;
+}
+const sheetFor = (n, r) => vorlage() === "ihk-woche" ? ihkSheet(n, r) : genSheet(n, r);
 const bullet = t => String(t || "").split("\n").map(s => s.trim()).filter(Boolean);
 
 /* IHK-Ausbildungsnachweis nach Vorlage (Aufbau, Felder und Reihenfolge wie Woche_1.docx) */
@@ -1541,11 +1844,10 @@ const ui = {
 };
 
 /* Nur Berichtsheft und Einstellungen anzeigen (übrige Bereiche bleiben im Code, Daten bleiben erhalten) */
-const REPORT_ONLY = true;
-const REPORT_VIEWS = ["report", "settings"];
+const onlyReport = () => !state.settings.modules.schule && !state.settings.modules.arbeit;
 function parseRoute() {
   const r = parseRouteAll();
-  return REPORT_ONLY && !REPORT_VIEWS.includes(r.view) ? { view: "report", n: Math.max(1, weekNo(todayKey())) } : r;
+  return viewEnabled(r.view) ? r : { view: "report", n: Math.max(1, weekNo(todayKey())) };
 }
 function parseRouteAll() {
   const h = (location.hash || "").replace(/^#\/?/, "");
@@ -1556,6 +1858,7 @@ function parseRouteAll() {
     case "work": return { view: "work" };
     case "homework": return { view: "homework" };
     case "grades": return { view: "grades" };
+    case "exam": return { view: "exam" };
     case "cards": return { view: "cards", mode: b === "lernen" ? "learn" : "list" };
     case "time": return { view: "time", date: isKey(b) ? b : todayKey() };
     case "calendar": return { view: "calendar", mode: ["month", "week", "day"].includes(b) ? b : "month", date: isKey(c) ? c : todayKey() };
@@ -1619,11 +1922,12 @@ function resolveTheme() {
 /* [id, Link, Icon, Name, in unterer Handy-Leiste, Bereich] */
 const NAV = [
   ["overview", "#/", "dash", "Start", 1, ""],
+  ["report", "#/report", "book", "Berichtsheft", 0, ""],
   ["school", "#/school", "school", "Stundenplan", 0, "Schule"],
   ["homework", "#/homework", "note", "Hausaufgaben", 0, "Schule"],
   ["grades", "#/grades", "star", "Noten", 0, "Schule"],
   ["cards", "#/cards", "layers", "Lernkarten", 0, "Schule"],
-  ["report", "#/report", "book", "Berichtsheft", 0, "Schule"],
+  ["exam", "#/exam", "star", "Prüfung", 0, "Schule"],
   ["today", "#/today", "today", "Heute", 0, "Arbeit"],
   ["time", "#/time", "clock", "Zeiterfassung", 0, "Arbeit"],
   ["calendar", "#/calendar", "cal", "Kalender", 1, "Arbeit"],
@@ -1641,9 +1945,11 @@ function curNav(route) {
 }
 function navLinks(cur, withGroups) {
   let last = "", html = "";
-  if (REPORT_ONLY) return [["report", "#/report", "book", "Berichtsheft", "o1"], ["settings", "#/settings", "sliders", "Einstellungen", "o5"]]
+  if (onlyReport()) return [["report", "#/report", "book", "Berichtsheft", "o1"], ["settings", "#/settings", "sliders", "Einstellungen", "o5"]]
     .map(([id, href, ic, label, o]) => `<a href="${href}" class="${o}" ${cur === id ? 'aria-current="page"' : ""}>${icon(ic, 19)}<span>${label}</span></a>`).join("");
-  NAV.forEach(([id, href, ic, label, mobile, group]) => {
+  const m = state.settings.modules;
+  NAV.filter(n => viewEnabled(n[0])).forEach(([id, href, ic, label, mobile, group]) => {
+    if (id === "calendar" || id === "report") mobile = id === "calendar" ? 1 : m.arbeit ? 0 : 1;
     if (withGroups && group !== last) { html += group ? `<div class="nav-group">${group}</div>` : `<div class="nav-group" style="height:0;margin:10px 0 0"></div>`; last = group; }
     const count = id === "today" && dayStats().open ? `<span class="count">${dayStats().open}</span>` : id === "homework" && openHw().length ? `<span class="count">${openHw().length}</span>` : "";
     html += `<a href="${href}" class="${mobile ? (id === "overview" ? "o1" : "o5") : "desk"}" ${cur === id ? 'aria-current="page"' : ""}>${icon(ic, 19)}<span>${label}</span>${count}</a>`;
@@ -1657,9 +1963,9 @@ function renderRail(route) {
       <a class="brand" href="#/" aria-label="Azubino, zum Start">${logo("lg1")}</a>
       <nav class="nav" aria-label="Hauptnavigation">
         ${navLinks(cur, true)}
-        ${REPORT_ONLY ? "" : `<a href="#/school" class="mob o2" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 20)}<span>Schule</span></a>
+        ${onlyReport() ? "" : `${state.settings.modules.schule ? "" : "<!--"}<a href="#/school" class="mob o2" ${SCHOOL_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("school", 20)}<span>Schule</span></a>${state.settings.modules.schule ? "" : "-->"}${state.settings.modules.arbeit ? "" : "<!--"}
         <span class="fab-slot o3"><button type="button" class="fab ${stampState() === "in" ? "running" : ""}" data-act="quick" aria-label="Schnellaktionen">${icon("plus", 26)}</button></span>
-        <a href="#/work" class="mob o4" ${WORK_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("building", 20)}<span>Arbeit</span></a>`}
+        <a href="#/work" class="mob o4" ${WORK_VIEWS.includes(cur) ? 'aria-current="page"' : ""}>${icon("building", 20)}<span>Arbeit</span></a>${state.settings.modules.arbeit ? "" : "-->"}`}
       </nav>
       <div class="rail-foot">KW ${isoWeek(new Date())} · ${fmtD(todayKey())}<br>Version ${APP_VERSION}${sync.session ? `<br><span id="syncState">${esc(syncLabel())}</span>` : ""}</div>
     </aside>`;
@@ -1669,11 +1975,11 @@ function renderTopbar() {
   return `
     <header class="topbar">
       <a class="m-brand" href="#/" aria-label="Azubino, zum Start">${logo("lg2")}</a>
-      ${REPORT_ONLY ? `<span class="grow"></span>` : `<button class="search-btn" type="button" data-act="palette" aria-label="Suchen und Befehle (${MOD} K)">${icon("search", 17)}<span class="grow">Suchen …</span><kbd>${MOD} K</kbd></button>`}
+      ${!state.settings.modules.arbeit ? `<span class="grow"></span>` : `<button class="search-btn" type="button" data-act="palette" aria-label="Suchen und Befehle (${MOD} K)">${icon("search", 17)}<span class="grow">Suchen …</span><kbd>${MOD} K</kbd></button>`}
       <div class="top-actions">
         <a class="btn icon m-only" href="#/settings" aria-label="Einstellungen" title="Einstellungen">${icon("sliders", 18)}</a>
         <button class="btn icon" type="button" data-act="theme" aria-label="${dark ? "Helles Design" : "Dunkles Design"}" title="${dark ? "Hell" : "Dunkel"}">${icon(dark ? "sun" : "moon", 18)}</button>
-        ${REPORT_ONLY ? "" : `<button class="btn primary" type="button" data-act="new-event">${icon("plus", 17)}<span class="lbl">Termin</span></button>`}
+        ${!state.settings.modules.arbeit ? "" : `<button class="btn primary" type="button" data-act="new-event">${icon("plus", 17)}<span class="lbl">Termin</span></button>`}
       </div>
     </header>`;
 }
@@ -1739,7 +2045,8 @@ function renderOverview() {
     ${statTiles(k, n, r)}
     <div class="cols" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
       <div class="stack" style="gap:14px">
-        <div class="sec-head"><h2 style="font-size:20px;display:flex;gap:8px;align-items:center">${icon("school", 20)} Schule</h2></div>
+        ${state.settings.modules.schule ? `<div class="sec-head"><h2 style="font-size:20px;display:flex;gap:8px;align-items:center">${icon("school", 20)} Schule</h2></div>
+        ${examCountdown()}
         <section class="panel panel-pad" aria-labelledby="hNs">
           <div class="sec-head"><h2 id="hNs">${ns ? (ns === k ? "Heute Berufsschule" : `Nächster Schultag: ${WD[pkey(ns).getDay()]}, ${fmtDs(ns)}`) : "Berufsschule"}</h2><a class="link-btn" href="#/school">Stundenplan</a></div>
           ${ns ? lessonsOf(ns).map(l => `<div class="item"><span class="time">${esc(l.from)}–${esc(l.to)}</span><div class="grow">${esc(l.subject)}<div class="sub">${esc(l.teacher)}</div></div></div>`).join("") || `<p class="hint-text">Kein Stundenplan eingetragen.</p>` : `<p class="hint-text">Keine Schultage mehr eingetragen.</p>`}
@@ -1747,15 +2054,15 @@ function renderOverview() {
         <section class="panel panel-pad" aria-labelledby="hHw">
           <div class="sec-head"><h2 id="hHw">Hausaufgaben</h2><a class="link-btn" href="#/homework">Alle</a></div>
           ${hw.length ? hw.map(h => `<div class="item"><span class="time">${h.due ? (h.due < k ? "überfällig" : fmtDs(h.due)) : "ohne Datum"}</span><div class="grow">${esc(h.text)}<div class="sub">${esc(h.subject)}</div></div></div>`).join("") : `<p class="hint-text">Keine offenen Hausaufgaben.</p>`}
-        </section>
+        </section>` : ""}
         <section class="panel panel-pad" aria-labelledby="hRep">
           <div class="sec-head"><h2 id="hRep">Berichtsheft diese Woche</h2><a class="link-btn" href="#/report/${n}">Öffnen</a></div>
           <p>Nachweis Nr. ${n} · ${fmtD(w.from)} – ${fmtD(w.to)}</p>
           <p class="hint-text" style="margin:4px 0 10px">${r.done ? "Fertig gespeichert." : r.saved ? "Entwurf gespeichert." : `${plural(entries, "Eintrag", "Einträge")} gemerkt.`} Betrieb ${r.hBetrieb || "0"} Std. · Schule ${r.hSchule || "0"} Std.</p>
-          ${bar(Math.min(100, Math.round(parseH(sumH(r)) / 40 * 100)), r.done)}
+          ${bar(Math.min(100, Math.round(parseH(sumH(r)) / Math.max(1, w.days.length * tagesSoll() / 60) * 100)), r.done)}
         </section>
       </div>
-      <div class="stack" style="gap:14px">
+      ${state.settings.modules.arbeit ? `<div class="stack" style="gap:14px">
         <div class="sec-head"><h2 style="font-size:20px;display:flex;gap:8px;align-items:center">${icon("building", 20)} Arbeit</h2></div>
         ${timeCard(true)}
         <section class="panel panel-pad" aria-labelledby="hEv">
@@ -1769,7 +2076,7 @@ function renderOverview() {
           ${open.map(l => { const s = stats(l); return `<div class="item"><span class="time">${s.reqDone}/${s.reqTotal}</span><div class="grow"><a class="link-btn" style="color:inherit" href="#/list/${l.id}">${esc(l.title)}</a>${bar(s.percent)}</div></div>`; }).join("")}
           ${!due.length && !open.length ? `<p class="hint-text">Keine offenen Aufgaben. ${d.req ? "Alles erledigt." : ""}</p>` : ""}
         </section>
-      </div>
+      </div>` : ""}
     </div>`;
 }
 
@@ -1787,7 +2094,7 @@ function nextSchoolDay(from = todayKey(), subject = "") {
   return "";
 }
 const openHw = () => state.homework.filter(h => !h.done).sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
-const subjects = () => [...new Set([4, 5].flatMap(d => state.settings.school[d].lessons.map(l => l.subject)))];
+const subjects = () => [...new Set(WD_ALL.flatMap(d => (state.settings.school[d] || { lessons: [] }).lessons.map(l => l.subject)))];
 const lessonLines = d => state.settings.school[d].lessons.map(l => `${l.from}${l.to ? "-" + l.to : ""} ${l.subject}${l.teacher ? " | " + l.teacher : ""}${l.room ? " | " + l.room : ""}`).join("\n");
 function renderWork() {
   const d = dayStats(), k = todayKey();
@@ -1825,7 +2132,7 @@ function openQuick() {
 function renderTimetable() {
   const st = state.settings.school, ns = nextSchoolDay();
   const col = d => {
-    const ls = st[d].lessons;
+    const ls = (st[d] || { lessons: [] }).lessons;
     const rows = ls.map((l, i) => {
       const gap = i && ls[i - 1].to && l.from && ls[i - 1].to < l.from ? `<div class="lesson pause"><span>${esc(ls[i - 1].to)}–${esc(l.from)}</span><span>Pause</span><span></span></div>` : "";
       const nowCls = pkey(todayKey()).getDay() === Number(d) && schoolDay(todayKey()) && l.from <= nowTime() && nowTime() < l.to ? " now" : "";
@@ -1838,7 +2145,7 @@ function renderTimetable() {
     <div class="page-head"><div><p class="eyebrow">Schule · Stundenplan</p><h1>Was heute <span class="hl">dran ist.</span></h1><p class="lede">Berufsschule am Donnerstag und Freitag.${ns ? ` Nächster Schultag: ${fmtLong(ns)}.` : ""}</p></div></div>
     ${schoolTabs("school")}
     ${examsPanel()}
-    <div class="tt">${col(4)}${col(5)}</div>
+    <div class="tt">${(schoolWeekdays().length ? schoolWeekdays() : [4, 5]).map(col).join("")}</div>
     ${schoolFormHtml()}`;
 }
 function schoolFormHtml() {
@@ -1847,7 +2154,7 @@ function schoolFormHtml() {
     <form class="setting" id="schoolForm" style="margin-top:18px">
       <h3>Stundenplan bearbeiten</h3><p>Eine Stunde pro Zeile: „08:45-09:30 Fach | Lehrkraft | Raum“. Unterrichtszeiten zählen fürs Berichtsheft ohne Abzug der Pausen.</p>
       <div class="form">
-        ${[4, 5].map(d => `<div class="field"><span class="lab">${WDL[d]}</span><div style="display:flex;gap:6px;align-items:center;min-width:0"><input class="input" style="min-width:0" type="time" id="s${d}f" value="${st[d].from}" aria-label="${WDL[d]} von"> – <input class="input" style="min-width:0" type="time" id="s${d}t" value="${st[d].to}" aria-label="${WDL[d]} bis"></div>
+        ${(schoolWeekdays().length ? schoolWeekdays() : [4, 5]).map(d => `<div class="field"><span class="lab">${WDL[d]}</span><div style="display:flex;gap:6px;align-items:center;min-width:0"><input class="input" style="min-width:0" type="time" id="s${d}f" value="${st[d].from}" aria-label="${WDL[d]} von"> – <input class="input" style="min-width:0" type="time" id="s${d}t" value="${st[d].to}" aria-label="${WDL[d]} bis"></div>
           <textarea class="textarea" id="s${d}l" rows="7" aria-label="Stundenplan ${WDL[d]}">${esc(lessonLines(d))}</textarea></div>`).join("")}
       </div>
       <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="school-reseed">Berufsschultage im Kalender neu eintragen</button></div>
@@ -1898,12 +2205,27 @@ async function aiCall(body) {
   if (!sync.session) throw new Error("Bitte anmelden.");
   if (!navigator.onLine) throw new Error("Keine Internetverbindung.");
   await ensureToken();
-  const r = await fetch(`${SB.url}/functions/v1/lernkarte`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SB.key, Authorization: "Bearer " + sync.session.access_token }, body: JSON.stringify(body) });
+  const r = await fetch(`${SB.url}/functions/v1/lernkarte`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SB.key, Authorization: "Bearer " + sync.session.access_token }, body: privacy(JSON.stringify(body)) });
   const b = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(b.error || b.message || `Fehler ${r.status}`);
   return b;
 }
-const aiCard = (term, subject) => aiCall({ mode: "karte", term, subject, jahr: trainingYear(todayKey()) });
+const aiCard = (term, subject) => aiCall({ mode: "karte", term, subject, jahr: trainingYear(todayKey()), beruf: aiBeruf() });
+/* Datenschutz-Modus: eigener Name, Betrieb und Objektnamen gehen nicht an die KI */
+function privacy(json) {
+  const p = state.settings.profile;
+  if (!p.datenschutz) return json;
+  const words = [[p.name, "[Name]"], ...String(p.name || "").split(/\s+/).map(x => [x, "[Name]"]), [p.firma, "[Betrieb]"], [p.abteilung, "[Abteilung]"], ...(state.properties || []).map(x => [x.name, "[Objekt]"])]
+    .filter(([w]) => w && String(w).trim().length >= 4).sort((a, b) => b[0].length - a[0].length);
+  words.forEach(([w, r]) => { const e = JSON.stringify(String(w).trim()).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); json = json.replace(new RegExp(e, "gi"), r); });
+  return json;
+}
+/* Berufsangaben für die KI */
+function aiBeruf(jahr) {
+  const p = state.settings.profile, b = berufPack() || {}, j = jahr || trainingYear(todayKey());
+  const t = [...(b.taetigkeiten || [])].sort(() => Math.random() - .5).slice(0, 25);
+  return { id: p.beruf || "eigen", name: berufName(), kammer: b.kammer || "IHK", land: LAENDER[p.land] || "", lernfelder: (b.lernfelder || []).filter(l => l[2] === j).map(l => `${l[0]}: ${l[1]}`), faecher: b.faecher || [], programme: b.programme || [], taetigkeiten: t };
+}
 /* Woche im Schuljahr (ab 1. September) */
 const schoolWeek = k => { const d = pkey(k), y = d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1; return Math.max(1, Math.floor((monday(d) - monday(new Date(y, 8, 1))) / 6048e5) + 1); };
 /* KI-Entwurf: Rahmen (Stunden, Krank, Feiertage, Klausuren) rechnet die App, Inhalte schreibt die KI im Stil der archivierten Nachweise */
@@ -1914,7 +2236,7 @@ async function aiWeek(n, sick) {
   const avoid = [...others.map(i => state.reports[i].vorgangTitel).filter(Boolean).map(t => "Arbeitsvorgang: " + t), ...others.slice(0, 4).flatMap(i => bullet(state.reports[i].betrieb)).map(t => t.replace(/^[-–•>\s]+/, ""))].slice(0, 80);
   const res = await aiCall({
     mode: "bericht", week: { nr: repHead(n, ui.rep || {}).nr, von: fmtD(w.from), bis: fmtD(w.to), jahr: trainingYear(w.to), schulwoche: schoolWeek(w.from) },
-    count: Math.max(m.count, m.own.length), own: m.own, subjects: m.subs, needVorgang: m.active > 0, software: state.settings.profile.software || "", examples, avoid
+    count: Math.max(m.count, m.own.length), own: m.own, subjects: m.subs, needVorgang: m.active > 0 && state.settings.profile.vorlage === "ihk-woche", software: state.settings.profile.software || "", examples, avoid, beruf: aiBeruf(trainingYear(w.to))
   });
   const out = { ...g, examples: examples.length };
   if (!m.allSick && m.count && res.betrieb.length) out.betrieb = [...res.betrieb.slice(0, Math.max(m.count, m.own.length)), ...m.notes].map(t => "-" + t).join("\n");
@@ -2042,7 +2364,7 @@ function renderTime(route) {
   }
   const breaksText = d.breaks.map(b => `${b.from}-${b.to}`).join(", ");
   return `
-    <div class="page-head"><div><p class="eyebrow">Arbeit · Zeiterfassung</p><h1>Rein. Pause. <span class="hl">Raus.</span></h1><p class="lede">Gleitzeit mit 8 Std. Soll. Urlaub, Krank und Schule zählen 8 Std., die Mindestpause rechnet Azubino selbst.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">Arbeit · Zeiterfassung</p><h1>Rein. Pause. <span class="hl">Raus.</span></h1><p class="lede">Gleitzeit mit ${fmtHM(tagesSoll())} Std. Soll. Urlaub, Krank und Schule zählen voll, die Mindestpause rechnet Azubino selbst${isMinor() ? " – nach Jugendarbeitsschutzgesetz" : ""}.</p></div></div>
     <div class="cols">
       <div class="stack" style="gap:16px">
         ${timeCard()}
@@ -2059,6 +2381,7 @@ function renderTime(route) {
           <div class="field"><label for="tmTo">Gehen</label><input class="input" id="tmTo" type="time" value="${esc(d.to)}"></div>
           <div class="field"><label for="tmBreaks">Pausen</label><input class="input" id="tmBreaks" value="${esc(breaksText)}" placeholder="12:00-12:30, 15:00-15:10"></div>
           <div class="field"><label for="tmPause">oder Pause in Min.</label><input class="input" id="tmPause" type="number" min="0" max="600" step="5" value="${d.pause || ""}"></div>
+          ${arbeitsschutz(sel).map(w => `<div class="field full notice warn-note">${icon("shield", 16)} <span>${esc(w)}</span></div>`).join("")}
           <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Speichern</button>${state.days[sel] && (d.from || d.status) ? `<button type="button" class="btn danger" data-act="t-clear" data-value="${sel}">Zeiten löschen</button>` : ""}</div>
         </form>
         <form class="panel panel-pad form three" id="vacForm" autocomplete="off">
@@ -2074,7 +2397,9 @@ function renderTime(route) {
         <div class="block"><div class="cap">Woche Mo–Fr</div>${weekBars()}</div>
         <div class="block"><div class="cap">Diese Woche</div><div>Ist ${fmtHM(wk.ist)} / Soll ${fmtHM(wk.soll)} <strong class="${wk.ist - wk.soll < 0 ? "minus" : "plus"}">${fmtHM(wk.ist - wk.soll, true)}</strong></div></div>
         <div class="block"><div class="cap">Dieser Monat</div><div>Ist ${fmtHM(mo.ist)} / Soll ${fmtHM(mo.soll)} <strong class="${mo.ist - mo.soll < 0 ? "minus" : "plus"}">${fmtHM(mo.ist - mo.soll, true)}</strong></div></div>
-        <div class="block"><div class="cap">${year}</div><div>${plural(cnt("urlaub"), "Urlaubstag", "Urlaubstage")} · ${plural(cnt("krank"), "Krankheitstag", "Krankheitstage")}</div></div>
+        ${(() => { const u = urlaubKonto(year); return `<div class="block"><div class="cap">Urlaub ${year}</div><div><strong>${u.rest}</strong> von ${u.total} Tagen übrig · ${u.taken} genommen</div><div class="bar" style="margin-top:6px"><span style="width:${Math.min(100, Math.round(u.taken / Math.max(1, u.total) * 100))}%"></span></div>${u.below ? `<p class="hint-text" style="margin-top:6px">Gesetzlich mindestens ${u.min} Tage (${u.law}). Bitte Anspruch im Ausbildungsvertrag prüfen.</p>` : ""}</div>`; })()}
+        <div class="block"><div class="cap">${year}</div><div>${plural(cnt("krank"), "Krankheitstag", "Krankheitstage")}</div></div>
+        ${isMinor() ? `<div class="block"><div class="cap">Jugendarbeitsschutz</div><div class="hint-text">Unter 18: höchstens 8 Std. am Tag und 40 Std. pro Woche, nur 6–20 Uhr, 30 Min. Pause ab 4,5 Std., 60 Min. ab 6 Std., 12 Std. Ruhe zwischen zwei Arbeitstagen. Berufsschule mit mehr als 5 Stunden à 45 Min. zählt einmal pro Woche als ganzer Arbeitstag.</div></div>` : ""}
       </aside>
     </div>`;
 }
@@ -2880,12 +3205,317 @@ function openFlowEditor(f) {
   const lines = f ? f.steps.map(x => x.copy ? `${x.text} | ${x.copy.replace(/\n/g, "\\n")}` : x.text).join("\n") : "";
   openDialog({ title: f ? "Aufgabe bearbeiten" : "Eigene Aufgabe", body: `
     <form class="stack" id="flowForm" data-id="${f ? f.id : ""}" style="gap:12px">
-      <div class="field"><label for="flTitle">Name</label><input class="input" id="flTitle" required value="${esc(f ? f.title : "")}" placeholder="z. B. Wohnungsübergabe vorbereiten"></div>
+      <div class="field"><div class="lbl-row"><label for="flTitle">Name</label><button type="button" class="btn small" data-act="flow-ai">${icon("bolt", 13)} Schritte mit KI vorschlagen</button></div><input class="input" id="flTitle" required value="${esc(f ? f.title : "")}" placeholder="z. B. Wareneingang prüfen"></div>
       <div class="field"><label for="flDesc">Kurzbeschreibung</label><input class="input" id="flDesc" value="${esc(f ? f.desc : "")}"></div>
       <div class="field"><label for="flSteps">Schritte <span class="hint-text">– einer pro Zeile · Text zum Kopieren nach „|“, Absatz mit \\n</span></label><textarea class="textarea" id="flSteps" rows="10" placeholder="Unterlagen ausdrucken&#10;Termin im Kalender eintragen&#10;E-Mail senden | Sehr geehrte Damen und Herren,\\n\\n...">${esc(lines)}</textarea></div>
       <div class="btn-row"><button type="submit" class="btn primary">Speichern</button></div>
     </form>` });
 }
+/* ==========================================================
+   Berufe und Einrichtung (für alle Ausbildungen)
+   ========================================================== */
+let BERUFE = null, berufeLoading = null;
+function loadBerufe() {
+  if (BERUFE) return Promise.resolve(BERUFE);
+  if (!berufeLoading) berufeLoading = fetch("berufe.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(d => { BERUFE = d && Array.isArray(d.berufe) ? d : { berufe: [], weitere: [] }; berufeLoading = null; return BERUFE; });
+  return berufeLoading;
+}
+/* Aktives Berufspaket: eingebaut (mit Fachrichtung) oder eigenes (KI) */
+function berufPack() {
+  const p = state.settings.profile;
+  if (state.berufPack && (state.berufPack.id === p.beruf || p.beruf === "eigen")) return state.berufPack;
+  if (p.beruf === "eigen" || !p.beruf) return null;
+  const b = BERUFE && BERUFE.berufe.find(x => x.id === p.beruf);
+  if (!b) { if (!BERUFE) loadBerufe().then(() => render()); return state.berufPack && state.berufPack.id === p.beruf ? state.berufPack : null; }
+  const fr = (b.fachrichtungen || []).find(f => f.name === p.fachrichtung) || (b.fachrichtungen || [])[0];
+  if (!fr) return b;
+  return { ...b, lernfelder: [...b.lernfelder, ...(fr.lernfelder || [])], taetigkeiten: [...b.taetigkeiten, ...(fr.taetigkeiten || [])], vorgaenge: [...b.vorgaenge, ...(fr.vorgaenge || [])], fachrichtung: fr.name };
+}
+const berufName = () => { const p = state.settings.profile, b = berufPack(); return (b && b.name) || p.berufName || "Auszubildende/r"; };
+const findBeruf = name => { const n = norm(name); return BERUFE && BERUFE.berufe.find(b => norm(b.name) === n || (b.alias || []).some(a => norm(a) === n)); };
+/* Lernfelder des aktuellen Ausbildungsjahres */
+const lernfelderJahr = j => ((berufPack() || {}).lernfelder || []).filter(l => l[2] === j);
+
+/* Bereiche (Module) */
+const MODULE_VIEWS = { schule: ["school", "homework", "grades", "cards", "exam"], arbeit: ["today", "time", "calendar", "tasks", "task", "work", "lists", "list", "templates"], immo: ["props", "prop", "assistant"] };
+const viewEnabled = v => { const m = state.settings.modules; if (["report", "settings"].includes(v)) return true; if (v === "overview") return m.schule || m.arbeit; return Object.entries(MODULE_VIEWS).some(([k, vs]) => m[k] && vs.includes(v)); };
+
+/* ---------- Formularfelder (Einrichtung und Einstellungen) ---------- */
+const WDN_SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+function ausbFields(sec) {
+  const p = state.settings.profile, sp = state.settings.schulPlan, m = state.settings.modules, b = berufPack();
+  const names = BERUFE ? [...BERUFE.berufe.map(x => x.name), ...(BERUFE.weitere || [])] : [];
+  const fr = BERUFE && (BERUFE.berufe.find(x => x.id === p.beruf) || {}).fachrichtungen;
+  const j1 = sp.jahre[1] || sanitizePlanYear({ tage: [] }), j2 = sp.jahre[2];
+  const later = !j2 ? "gleich" : j2.modell === j1.modell && j2.rhythmus === 2 && j1.rhythmus === 1 ? "zweite" : JSON.stringify(j2) === JSON.stringify(j1) ? "gleich" : "eigen";
+  const f = (id, label, input, full) => `<div class="field ${full ? "full" : ""}"><label for="${id}">${label}</label>${input}</div>`;
+  const chk = (id, label, on, extra = "") => `<label class="check-line"><input type="checkbox" id="${id}" ${on ? "checked" : ""} ${extra}> ${label}</label>`;
+  const out = {
+    ausbildung: `
+      ${f("aBeruf", "Ausbildungsberuf", `<input class="input" id="aBeruf" list="berufList" value="${esc(p.berufName || (b && b.name) || "")}" placeholder="z. B. Industriekaufmann/-frau" autocomplete="off"><datalist id="berufList">${names.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>`, true)}
+      ${fr && fr.length ? f("aFach", "Fachrichtung / Schwerpunkt", `<select class="select" id="aFach">${fr.map(x => `<option ${x.name === p.fachrichtung ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`) : ""}
+      ${f("aStart", "Ausbildungsbeginn", `<input class="input" id="aStart" type="date" value="${esc(p.start)}">`)}
+      ${f("aDauer", "Dauer", `<select class="select" id="aDauer">${[[24, "2 Jahre"], [30, "2,5 Jahre"], [36, "3 Jahre"], [42, "3,5 Jahre"], [18, "1,5 Jahre"]].map(([v, l]) => `<option value="${v}" ${p.dauer === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+      ${f("aLand", "Bundesland (Feiertage, Ferien)", `<select class="select" id="aLand">${Object.entries(LAENDER).map(([k, v]) => `<option value="${k}" ${p.land === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)}
+      ${f("aGeburt", "Geburtsdatum <span class=\"hint-text\">– optional, für den Jugendarbeitsschutz</span>", `<input class="input" id="aGeburt" type="date" value="${esc(p.geburt)}">`)}
+      <div class="field full" ${p.land === "BY" ? "" : "hidden"} id="aBy">${chk("aMariae", "Mariä Himmelfahrt (15.08.) ist bei uns Feiertag", p.mariae)}${chk("aAugsburg", "Augsburger Friedensfest (08.08.)", p.augsburg)}</div>`,
+    betrieb: `
+      ${f("aName", "Dein Name", `<input class="input" id="aName" value="${esc(p.name)}" autocomplete="name">`)}
+      ${f("aFirma", "Ausbildungsbetrieb", `<input class="input" id="aFirma" value="${esc(p.firma)}">`)}
+      ${f("aAbt", "Abteilung", `<input class="input" id="aAbt" value="${esc(p.abteilung)}">`)}
+      ${f("aSw", "Programme im Betrieb <span class=\"hint-text\">– für Berichtsheft-Vorschläge</span>", `<input class="input" id="aSw" value="${esc(p.software)}" placeholder="${esc(((b && b.programme) || ["Outlook", "Excel"]).slice(0, 3).join(", "))}">`)}
+      ${f("aStd", "Wochenarbeitszeit (Std.)", `<input class="input" id="aStd" type="number" min="10" max="48" step="0.5" value="${p.wochenStunden}">`)}
+      ${f("aUrlaub", "Urlaubstage pro Jahr", `<input class="input" id="aUrlaub" type="number" min="0" max="40" value="${p.urlaub}">`)}
+      <div class="field full"><span class="lab">Arbeitstage</span><div class="btn-row">${WD_ALL.map(d => chk(`aWd${d}`, WDN_SHORT[d], p.arbeitstage.includes(d))).join("")}</div></div>`,
+    schule: `
+      ${f("aModell", "Berufsschule", `<select class="select" id="aModell">${[["tage", "Feste Wochentage"], ["block", "Blockunterricht"], ["keine", "Keine / noch unbekannt"]].map(([v, l]) => `<option value="${v}" ${j1.modell === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+      ${f("aSchulStart", "Erster Schultag <span class=\"hint-text\">– optional</span>", `<input class="input" id="aSchulStart" type="date" value="${esc(sp.schulStart)}">`)}
+      <div class="field full" id="aTageBox" ${j1.modell === "tage" ? "" : "hidden"}><span class="lab">Schultage und Zeiten im 1. Ausbildungsjahr</span>
+        <div class="stack" style="gap:6px">${WD_ALL.map(d => { const t = j1.tage.find(x => x.wd === d); return `<div class="wd-row">${chk(`aS${d}`, WDN_SHORT[d], !!t)}<input class="input" type="time" id="aS${d}f" value="${t ? t.from : "08:00"}" aria-label="${WDL[d]} von"> – <input class="input" type="time" id="aS${d}t" value="${t ? t.to : "15:00"}" aria-label="${WDL[d]} bis"></div>`; }).join("")}</div>
+        <div class="form" style="margin-top:8px">
+          ${f("aRhy1", "Rhythmus im 1. Jahr", `<select class="select" id="aRhy1"><option value="1" ${j1.rhythmus === 1 ? "selected" : ""}>jede Woche</option><option value="2" ${j1.rhythmus === 2 ? "selected" : ""}>jede zweite Woche</option></select>`)}
+          ${f("aLater", "Ab dem 2. Ausbildungsjahr", `<select class="select" id="aLater"><option value="gleich" ${later === "gleich" ? "selected" : ""}>wie im 1. Jahr</option><option value="zweite" ${later === "zweite" ? "selected" : ""}>nur noch jede zweite Woche</option>${later === "eigen" ? `<option value="eigen" selected>eigene Einstellung (unverändert)</option>` : ""}</select>`)}
+        </div></div>
+      <div class="field full" id="aBlockBox" ${j1.modell === "block" ? "" : "hidden"}><label for="aBloecke">Schulblöcke <span class="hint-text">– einer pro Zeile: TT.MM.JJJJ - TT.MM.JJJJ</span></label>
+        <textarea class="textarea" id="aBloecke" rows="5" placeholder="14.09.2026 - 02.10.2026">${esc([...new Set(Object.values(sp.jahre).flatMap(j => j.modell === "block" ? j.bloecke : []).map(x => `${fmtD(x.from)} - ${fmtD(x.to)}`))].sort((x, y) => parseDate(x.slice(0, 10)).localeCompare(parseDate(y.slice(0, 10)))).join("\n"))}</textarea>
+        <div class="wd-row" style="margin-top:6px"><span class="lab">Unterricht täglich</span><input class="input" type="time" id="aBf" value="${j1.tagFrom}"> – <input class="input" type="time" id="aBt" value="${j1.tagTo}"></div></div>`,
+    bericht: `
+      ${f("aVorlage", "Vorlage für den Ausbildungsnachweis", `<select class="select" id="aVorlage">${Object.entries(VORLAGEN).map(([k, v]) => `<option value="${k}" ${p.vorlage === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)}
+      ${p.vorlage === "eigene" ? `<div class="field full"><span class="lab">Eigene Word-Vorlage (.docx)</span>
+        <div class="btn-row"><button type="button" class="btn small" data-act="word-upload">${icon("upload", 14)} ${state.settings.wordTpl ? "Andere Vorlage hochladen" : "Vorlage hochladen"}</button><input id="wordFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+        ${state.settings.wordTpl ? `<span class="chip ok">${esc(state.settings.wordTpl.name)}</span><button type="button" class="btn small danger" data-act="word-remove">Entfernen</button>` : `<span class="hint-text">noch keine</span>`}</div>
+        <p class="hint-text" style="margin-top:6px">Schreib in deine Word-Datei Platzhalter in doppelten geschweiften Klammern. Die App füllt sie für jede Woche aus: ${WORD_KEYS.map(k => `<code>{{${k}}}</code>`).join(" ")}</p></div>` : ""}
+      <div class="field full"><span class="lab">Bereiche in der App</span>
+        ${chk("aModSchule", "Schule: Stundenplan, Hausaufgaben, Noten, Lernkarten, Prüfungen", m.schule)}
+        ${chk("aModArbeit", "Arbeit: Zeiterfassung mit Jugendarbeitsschutz, Urlaub, Kalender, Arbeitsabläufe", m.arbeit)}
+        ${p.beruf === "immobilien" ? chk("aModImmo", "Immobilien-Werkzeuge: Liegenschaften, Auftrags-Assistent", m.immo) : ""}
+        ${chk("aDs", "Datenschutz: Namen und Firmen vor dem Senden an die KI entfernen", p.datenschutz)}</div>`
+  };
+  return sec ? out[sec] : out;
+}
+/* Felder lesen und übernehmen; liefert true, wenn sich der Schulplan geändert hat */
+function readAusb() {
+  const p = state.settings.profile, sp = state.settings.schulPlan, v = id => ($(`#${id}`) || {}).value, c = id => !!($(`#${id}`) || {}).checked, has = id => !!$(`#${id}`);
+  const before = JSON.stringify([sp, p.start, p.dauer, p.land, p.augsburg, p.mariae]);
+  if (has("aBeruf")) {
+    const name = v("aBeruf").trim(), hit = findBeruf(name);
+    if (hit) { p.beruf = hit.id; p.berufName = hit.name; } else if (name) { if (p.berufName !== name) { p.beruf = "eigen"; p.berufName = name; } }
+    if (has("aFach")) p.fachrichtung = v("aFach");
+    p.start = keyOr(v("aStart")) || p.start; p.dauer = Number(v("aDauer")) || p.dauer; p.land = LAENDER[v("aLand")] ? v("aLand") : p.land;
+    p.geburt = keyOr(v("aGeburt")); p.mariae = c("aMariae"); p.augsburg = c("aAugsburg");
+  }
+  if (has("aName")) {
+    p.name = v("aName").trim(); p.firma = v("aFirma").trim(); p.abteilung = v("aAbt").trim(); p.software = v("aSw").trim();
+    p.wochenStunden = Math.min(48, Math.max(10, Number(v("aStd")) || 40)); p.urlaub = Math.min(40, Math.max(0, Number(v("aUrlaub")) || 0));
+    const at = WD_ALL.filter(d => c(`aWd${d}`)); if (at.length) p.arbeitstage = at;
+  }
+  if (has("aModell")) {
+    const modell = v("aModell"), tage = WD_ALL.filter(d => c(`aS${d}`)).map(d => ({ wd: d, from: timeOr(v(`aS${d}f`)) || "08:00", to: timeOr(v(`aS${d}t`)) || "15:00" }));
+    const bloecke = v("aBloecke").split("\n").map(l => { const m = l.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[-–bis]+\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/); return m ? { from: parseDate(m[1]), to: parseDate(m[2]) } : null; }).filter(b => b && b.from && b.to);
+    const j1 = sanitizePlanYear({ modell, tage, rhythmus: Number(v("aRhy1")), bloecke, tagFrom: v("aBf"), tagTo: v("aBt") }), later = v("aLater");
+    sp.schulStart = keyOr(v("aSchulStart"));
+    const old = sp.jahre; sp.jahre = { 1: j1 };
+    [2, 3, 4].forEach(j => { sp.jahre[j] = later === "eigen" && old[j] ? old[j] : modell === "tage" && later === "zweite" ? sanitizePlanYear({ ...j1, rhythmus: 2 }) : sanitizePlanYear(j1); });
+  }
+  if (has("aVorlage")) {
+    p.vorlage = VORLAGEN[v("aVorlage")] ? v("aVorlage") : p.vorlage;
+    state.settings.modules = { schule: c("aModSchule"), arbeit: c("aModArbeit"), immo: p.beruf === "immobilien" && c("aModImmo") };
+    p.datenschutz = c("aDs");
+  }
+  return before !== JSON.stringify([sp, p.start, p.dauer, p.land, p.augsburg, p.mariae]);
+}
+/* Berufsschultermine ab einem Datum neu erzeugen */
+function reseedSchool(from = todayKey()) {
+  state.events = state.events.filter(e => !(e.kind === "schule" && e.date >= from));
+  state.events.push(...schoolEvents(from));
+}
+
+/* ---------- Einrichtungs-Assistent beim ersten Start ---------- */
+const SETUP_STEPS = [["ausbildung", "Ausbildung", "Beruf, Beginn und Bundesland bestimmen Lernfelder, Feiertage und Ferien."], ["betrieb", "Betrieb", "Für die Kopfzeile des Nachweises und die Arbeitszeit."], ["schule", "Berufsschule", "Daraus trägt Azubino alle Schultage ein – ohne Ferien und Feiertage."], ["bericht", "Berichtsheft", "Vorlage und Bereiche kannst du jederzeit in den Einstellungen ändern."]];
+function renderSetup() {
+  if (!BERUFE) loadBerufe().then(() => render());
+  const s = Math.min(SETUP_STEPS.length - 1, ui.setupStep || 0);
+  return `
+    <div class="page-head"><div><p class="eyebrow">Einrichtung · Schritt ${s + 1} von ${SETUP_STEPS.length}</p><h1>Willkommen bei <span class="hl">Azubino.</span></h1><p class="lede">${esc(SETUP_STEPS[s][2])}</p></div></div>
+    <div class="steps-top">${SETUP_STEPS.map(([, l], i) => `<span class="${i === s ? "on" : i < s ? "done" : ""}">${i < s ? icon("check", 13) : i + 1} ${l}</span>`).join("")}</div>
+    <form class="panel panel-pad" id="setupForm" autocomplete="off">
+      ${SETUP_STEPS.map(([k, l], i) => `<fieldset class="form" ${i === s ? "" : "hidden"}><legend class="sr-only">${l}</legend>${ausbFields(k)}</fieldset>`).join("")}
+      <div class="btn-row" style="margin-top:16px">
+        ${s > 0 ? `<button type="button" class="btn" data-act="setup-back">Zurück</button>` : ""}
+        <button type="submit" class="btn primary">${s < SETUP_STEPS.length - 1 ? "Weiter" : ui.setupBusy ? "Richte ein …" : "Fertig – los geht's"}</button>
+      </div>
+    </form>`;
+}
+async function finishSetup() {
+  const p = state.settings.profile;
+  ui.setupBusy = true; render();
+  await refreshFerien(true);
+  p.setupDone = true;
+  state.settings.school = sanitizeSchool(state.settings.school);
+  reseedSchool(p.start);
+  saveState();
+  if (p.beruf === "eigen" && p.berufName) {
+    toast("Erstelle das Berufspaket für deinen Beruf mit KI …", { ms: 8000 });
+    try { await makeBerufPack(); } catch (e) { toast(`Berufspaket später unter Einstellungen erstellen (${e.message}).`, { ms: 8000 }); }
+  }
+  ui.setupBusy = false; ui.setupStep = 0;
+  location.hash = "#/report"; render(); toast("Eingerichtet. Viel Erfolg in der Ausbildung!");
+}
+/* ==========================================================
+   Prüfung: Termine, Lernplan, Lernfelder, Notenrechner, Probeprüfung
+   ========================================================== */
+/* IHK-Notenschlüssel (100-Punkte-Skala) */
+const ihkNote = p => p >= 92 ? [1, "sehr gut"] : p >= 81 ? [2, "gut"] : p >= 67 ? [3, "befriedigend"] : p >= 50 ? [4, "ausreichend"] : p >= 30 ? [5, "mangelhaft"] : [6, "ungenügend"];
+/* Vorschläge, solange keine echten Termine eingetragen sind */
+function examGuess() {
+  const p = state.settings.profile, b = berufPack() || {}, end = addMonths(pkey(p.start), p.dauer || 36);
+  const mid = dkey(addMonths(pkey(p.start), Math.round((p.dauer || 36) / 2) + 1)), last = dkey(addDays(end, -60));
+  return b.pruefungsArt === "zp" ? [["Zwischenprüfung", mid], ["Abschlussprüfung", last]] : [["Abschlussprüfung Teil 1", mid], ["Abschlussprüfung Teil 2", last]];
+}
+const examTermine = () => [...state.settings.pruefung.termine].sort((a, b) => a.date.localeCompare(b.date));
+function examCountdown() {
+  const t = examTermine().find(x => x.date >= todayKey());
+  if (!t) return "";
+  const d = daysUntil(t.date);
+  return `<a class="item" href="#/exam" style="text-decoration:none"><span class="chip accent">${d === 0 ? "heute" : `in ${plural(d, "Tag", "Tagen")}`}</span><span class="grow"><strong>${esc(t.name)}</strong> · ${fmtD(t.date)}</span></a>`;
+}
+function examBereiche() {
+  const st = state.settings.pruefung, b = berufPack() || {};
+  if (st.bereiche.length) return st.bereiche;
+  return (b.pruefung || []).map(([name, gewicht]) => ({ name, gewicht, punkte: "" }));
+}
+/* Lernplan: Lernfelder bis zur Prüfung auf die Wochen verteilen */
+function lernplan(t) {
+  const b = berufPack() || {}, lf = state.settings.lernfeld, teil1 = /teil 1|zwischen/i.test(t.name);
+  const maxJ = teil1 ? 2 : 4;
+  const list = (b.lernfelder || []).filter(l => l[2] <= maxJ);
+  const weeks = Math.max(1, Math.floor(daysUntil(t.date) / 7));
+  if (!list.length || daysUntil(t.date) < 0) return [];
+  const rest = list.filter(l => (lf[l[0]] || {}).s !== "fertig"), use = rest.length ? rest : list;
+  const plan = [], learnW = Math.max(1, weeks - (weeks > 3 ? 2 : 0));
+  for (let i = 0; i < Math.min(learnW, 30); i++) {
+    const from = Math.floor(i * use.length / learnW), to = Math.max(from + 1, Math.floor((i + 1) * use.length / learnW));
+    const mon = addDays(monday(pkey(todayKey())), 7 * i);
+    const t = use.slice(from, to).map(l => `${l[0]} ${l[1]}`).join(" · ") || "Wiederholung", kw = isoWeek(mon), last = plan[plan.length - 1];
+    if (last && last[1] === t) { last[0] = last[0].replace(/–\d+$/, "") + "–" + kw; } else plan.push([`KW ${kw}`, t]);
+  }
+  if (weeks > 3) plan.push(["Letzte 2 Wochen", "Alte Prüfungen unter Zeitdruck üben, Lernkarten wiederholen, Probeprüfungen"]);
+  return plan;
+}
+function renderExam() {
+  const tab = ["lf", "calc", "quiz"].includes(ui.examTab) ? ui.examTab : "plan", b = berufPack() || {}, st = state.settings.pruefung;
+  const tabs = `<div class="tabs" role="group" aria-label="Prüfung" style="margin-bottom:16px">${[["plan", "Termine & Lernplan"], ["lf", "Lernfelder"], ["calc", "Notenrechner"], ["quiz", "Probeprüfung"]].map(([k, l]) => `<button type="button" data-act="exam-tab" data-value="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div>`;
+  let body = "";
+  if (tab === "plan") {
+    const ts = examTermine(), next = ts.find(x => x.date >= todayKey());
+    body = `
+    <div class="edit-grid">
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Prüfungstermine</h2></div>
+        ${ts.length ? ts.map(t => { const d = daysUntil(t.date); return `<div class="item"><span class="grow"><strong>${esc(t.name)}</strong><div class="sub">${fmtD(t.date)} · ${d > 0 ? `noch ${plural(d, "Tag", "Tage")} (${plural(Math.floor(d / 7), "Woche", "Wochen")})` : d === 0 ? "heute" : "vorbei"}</div></span><button type="button" class="btn small icon quiet danger" data-act="exam-del" data-value="${t.id}" aria-label="Termin löschen">${icon("trash", 15)}</button></div>`; }).join("")
+          : `<p class="hint-text">Noch keine Termine. Die genauen Daten stehen in der Einladung deiner Kammer. Geschätzt: ${examGuess().map(([n, d]) => `${esc(n)} etwa ${fmtD(d).slice(3)}`).join(", ")}.</p>`}
+        <form class="form" id="examForm" style="margin-top:12px" autocomplete="off">
+          <div class="field"><label for="exName">Prüfung</label><input class="input" id="exName" list="exNames" required value="${esc((examGuess().find(([n]) => !ts.some(t => t.name === n)) || [""])[0])}"><datalist id="exNames">${examGuess().map(([n]) => `<option value="${esc(n)}"></option>`).join("")}<option value="Mündliche Prüfung"></option></datalist></div>
+          <div class="field"><label for="exDate">Datum</label><input class="input" id="exDate" type="date" required></div>
+          <div class="btn-row" style="align-self:end"><button type="submit" class="btn primary">${icon("plus", 15)} Eintragen</button></div>
+        </form>
+      </section>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Lernplan${next ? ` bis ${esc(next.name)}` : ""}</h2></div>
+        ${next ? (() => { const pl = lernplan(next); return pl.length ? `<div class="stack" style="gap:0">${pl.map(([w, t]) => `<div class="item"><strong style="min-width:110px">${esc(w)}</strong><span class="grow">${esc(t)}</span></div>`).join("")}</div><p class="hint-text" style="margin-top:8px">Fertige Lernfelder (Reiter „Lernfelder“) fallen aus dem Plan.</p>` : `<p class="hint-text">Für deinen Beruf sind keine Lernfelder hinterlegt.</p>`; })() : `<p class="hint-text">Trag einen Prüfungstermin ein, dann verteilt die App deine Lernfelder auf die Wochen bis dahin.</p>`}
+        ${(b.begriffe || []).length ? `<div class="btn-row" style="margin-top:12px"><button type="button" class="btn" data-act="exam-cards">${icon("layers", 15)} ${plural(b.begriffe.length, "Fachbegriff", "Fachbegriffe")} als Lernkarten</button></div>` : ""}
+      </section>
+    </div>`;
+  } else if (tab === "lf") {
+    const lf = state.settings.lernfeld, all = b.lernfelder || [], cur = trainingYear(todayKey());
+    body = all.length ? [1, 2, 3, 4].filter(j => all.some(l => l[2] === j)).map(j => `
+      <section class="panel panel-pad" style="margin-bottom:14px">
+        <div class="sec-head"><h2>${j}. Ausbildungsjahr${j === cur ? ` <span class="chip accent">jetzt</span>` : ""}</h2><span class="hint-text">${all.filter(l => l[2] === j && (lf[l[0]] || {}).s === "fertig").length} von ${all.filter(l => l[2] === j).length} fertig</span></div>
+        ${all.filter(l => l[2] === j).map(l => { const x = lf[l[0]] || { s: "offen", t: "" }; return `
+          <div class="lf-row">
+            <div class="grow"><strong>${esc(l[0])}</strong> ${esc(l[1])}</div>
+            <select class="select" data-lf="${esc(l[0])}" aria-label="Stand ${esc(l[0])}">${[["offen", "offen"], ["aktuell", "läuft gerade"], ["fertig", "fertig"]].map(([v, t]) => `<option value="${v}" ${x.s === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+            ${x.s === "aktuell" ? `<textarea class="textarea" data-lft="${esc(l[0])}" rows="2" placeholder="Aktuelle Themen, eines pro Zeile – landen im Berichtsheft">${esc(x.t)}</textarea>` : ""}
+          </div>`; }).join("")}
+      </section>`).join("") + `<p class="hint-text">Lernfelder „läuft gerade“ mit Themen nutzt die App für die Berufsschul-Zeilen im Berichtsheft.</p>`
+      : emptyState({ ic: "book", title: "Keine Lernfelder", text: "In den Einstellungen unter „Beruf“ deinen Beruf wählen oder ein Berufspaket mit KI erstellen." });
+  } else if (tab === "calc") {
+    const bs = examBereiche(), filled = bs.filter(x => x.punkte !== "");
+    const sumG = bs.reduce((a, x) => a + (Number(x.gewicht) || 0), 0);
+    const total = filled.length && sumG ? filled.reduce((a, x) => a + x.punkte * x.gewicht, 0) / filled.reduce((a, x) => a + (Number(x.gewicht) || 0), 0) : null;
+    const nt = total == null ? null : ihkNote(total);
+    body = `
+    <div class="edit-grid">
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Prüfungsbereiche</h2><span class="hint-text">Gewichtung zusammen ${sumG} %</span></div>
+        <form class="stack" id="calcForm" style="gap:8px" autocomplete="off">
+          ${bs.map((x, i) => `<div class="calc-row"><input class="input" id="cbN${i}" value="${esc(x.name)}" aria-label="Bereich"><input class="input" id="cbG${i}" inputmode="numeric" value="${esc(x.gewicht)}" aria-label="Gewicht in Prozent" title="Gewicht %"><input class="input" id="cbP${i}" inputmode="numeric" value="${esc(x.punkte)}" placeholder="Punkte" aria-label="Punkte"></div>`).join("")}
+          <div class="calc-row"><input class="input" id="cbN${bs.length}" placeholder="Weiterer Bereich" aria-label="Neuer Bereich"><input class="input" id="cbG${bs.length}" inputmode="numeric" placeholder="%" aria-label="Gewicht"><input class="input" id="cbP${bs.length}" inputmode="numeric" placeholder="Punkte" aria-label="Punkte"></div>
+          <div class="btn-row"><button type="submit" class="btn primary">Berechnen und speichern</button>${st.bereiche.length ? `<button type="button" class="btn" data-act="calc-reset">Bereiche zurücksetzen</button>` : ""}</div>
+          <p class="hint-text">Spalten: Bereich · Gewicht in % · erreichte Punkte (0–100). Gewichte laut Ausbildungsordnung; die Werte hier sind Orientierung.</p>
+        </form>
+      </section>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Ergebnis</h2></div>
+        ${nt ? `<div class="big-num">${String(Math.round(total * 10) / 10).replace(".", ",")} Punkte</div><p style="margin:6px 0 12px">Note <strong>${nt[0]}</strong> (${nt[1]})${filled.length < bs.length ? ` <span class="hint-text">– aus ${filled.length} von ${bs.length} Bereichen</span>` : ""}</p>
+          <p class="hint-text">${total >= 50 ? "Gesamtergebnis ausreichend oder besser." : "Unter 50 Punkten: nicht bestanden."} Bestanden ist meist nur, wenn zusätzlich die meisten Bereiche mindestens 50 Punkte haben und keiner unter 30 liegt (je nach Beruf). ${filled.some(x => x.punkte < 30) ? "<strong>Achtung: ein Bereich unter 30 Punkten.</strong>" : ""}</p>`
+          : `<p class="hint-text">Punkte eintragen und berechnen.</p>`}
+        <div class="table-wrap" style="margin-top:12px"><table class="table"><thead><tr><th>Punkte</th><th>Note</th></tr></thead><tbody>${[["100–92", "1 sehr gut"], ["unter 92–81", "2 gut"], ["unter 81–67", "3 befriedigend"], ["unter 67–50", "4 ausreichend"], ["unter 50–30", "5 mangelhaft"], ["unter 30–0", "6 ungenügend"]].map(([a, c]) => `<tr><td>${a}</td><td>${c}</td></tr>`).join("")}</tbody></table></div>
+      </section>
+    </div>`;
+  } else {
+    const q = ui.quiz, hist = [...state.quiz].reverse().slice(0, 8);
+    const opts = [...(b.pruefung || []).map(x => x[0]), ...(b.lernfelder || []).map(l => `${l[0]} ${l[1]}`)];
+    body = `
+    <section class="panel panel-pad" style="margin-bottom:14px">
+      <div class="sec-head"><h2>Neue Probeprüfung</h2></div>
+      <form class="form" id="quizForm" autocomplete="off">
+        <div class="field"><label for="qzB">Bereich oder Thema</label><input class="input" id="qzB" list="qzList" value="${esc(ui.quizBereich || opts[0] || "")}"><datalist id="qzList">${opts.map(o => `<option value="${esc(o)}"></option>`).join("")}</datalist></div>
+        <div class="field"><label for="qzN">Fragen</label><select class="select" id="qzN">${[5, 8, 10, 15].map(n => `<option ${n === 8 ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+        <div class="btn-row" style="align-self:end"><button type="submit" class="btn primary" ${ui.quizBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.quizBusy ? "KI erstellt Fragen …" : "Mit KI erstellen"}</button></div>
+      </form>
+      <p class="hint-text" style="margin-top:6px">Multiple Choice im Stil der Kammerprüfung. Braucht Anmeldung und Internet.</p>
+    </section>
+    ${q ? `<section class="panel panel-pad" style="margin-bottom:14px"><div class="sec-head"><h2>${esc(q.bereich)}</h2>${q.done ? `<span class="chip ${q.right / q.fragen.length >= .5 ? "ok" : "warn"}">${q.right} von ${q.fragen.length} richtig · ${Math.round(q.right / q.fragen.length * 100)} Punkte</span>` : ""}</div>
+      ${q.fragen.map((f, i) => `<fieldset class="quiz-q"><legend><strong>${i + 1}.</strong> ${esc(f.frage)}</legend>${f.antworten.map((a, j) => { const cls = q.done ? (j === f.richtig ? "ok" : q.ans[i] === j ? "bad" : "") : ""; return `<label class="quiz-a ${cls}"><input type="radio" name="qz${i}" data-act="quiz-ans" data-q="${i}" data-value="${j}" ${q.ans[i] === j ? "checked" : ""} ${q.done ? "disabled" : ""}> ${esc(a)}</label>`; }).join("")}${q.done && f.erklaerung ? `<p class="hint-text" style="margin-top:4px">${esc(f.erklaerung)}</p>` : ""}</fieldset>`).join("")}
+      <div class="btn-row">${q.done ? `<button type="button" class="btn" data-act="quiz-close">Schließen</button>` : `<button type="button" class="btn primary" data-act="quiz-check">Auswerten</button>`}</div></section>` : ""}
+    ${hist.length ? `<section class="panel panel-pad"><div class="sec-head"><h2>Bisherige Ergebnisse</h2></div>${hist.map(h => `<div class="item"><span class="grow">${esc(h.bereich)}<div class="sub">${fmtD(dkey(h.at))}</div></span><span class="chip ${h.right / Math.max(1, h.total) >= .5 ? "ok" : "warn"}">${h.right}/${h.total}</span></div>`).join("")}</section>` : ""}`;
+  }
+  return `
+    <div class="page-head"><div><p class="eyebrow">Schule · Prüfung</p><h1>Gut vorbereitet <span class="hl">in die Prüfung.</span></h1><p class="lede">${esc(berufName())}${b.kammer ? ` · ${esc(b.kammer)}` : ""}${b.pruefungsArt === "zp" ? " · Zwischen- und Abschlussprüfung" : b.pruefungsArt ? " · gestreckte Abschlussprüfung (Teil 1 und 2)" : ""}</p></div></div>
+    ${schoolTabs("exam")}${tabs}${body}`;
+}
+/* ---------- Berufspaket in den Einstellungen ---------- */
+function berufSetting() {
+  const p = state.settings.profile, b = berufPack(), own = p.beruf === "eigen" || (state.berufPack && state.berufPack.id === p.beruf);
+  const yrs = b ? [...new Set(b.lernfelder.map(l => l[2]))].sort() : [];
+  return `
+      <section class="setting">
+        <h3>Berufspaket: ${esc(berufName())}</h3>
+        ${b ? `<p>${esc(b.kammer || "IHK")} · ${plural(b.lernfelder.length, "Lernfeld", "Lernfelder")} · ${plural((b.taetigkeiten || []).length, "Tätigkeit", "Tätigkeiten")} · ${plural((b.rahmenplan || []).length, "Ausbildungsinhalt", "Ausbildungsinhalte")} · ${plural((b.begriffe || []).length, "Fachbegriff", "Fachbegriffe")}${own ? " · angepasst" : ""}</p>
+          <details><summary class="link-btn">Lernfelder ansehen und anpassen</summary>
+            <p class="hint-text" style="margin:8px 0">Eins pro Zeile: „Nr | Titel | Ausbildungsjahr“. Grundlage ist der KMK-Rahmenlehrplan – vergleiche mit dem Plan deiner Berufsschule.</p>
+            <textarea class="textarea" id="lfText" rows="10">${esc(b.lernfelder.map(l => `${l[0]} | ${l[1]} | ${l[2]}`).join("\n"))}</textarea>
+            <div class="btn-row" style="margin-top:8px"><button type="button" class="btn" data-act="lf-save">Lernfelder speichern</button>${own && p.beruf !== "eigen" ? `<button type="button" class="btn" data-act="pack-reset">Original wiederherstellen</button>` : ""}</div>
+          </details>
+          <div class="hint-text" style="margin-top:8px">${yrs.map(y => `${y}. Jahr: ${b.lernfelder.filter(l => l[2] === y).map(l => esc(l[0])).join(", ")}`).join(" · ")}</div>`
+        : `<p>Für „${esc(p.berufName || "deinen Beruf")}“ gibt es noch kein Paket. Die KI erstellt es aus dem Rahmenlehrplan und der Ausbildungsordnung: Lernfelder, typische Tätigkeiten, Arbeitsvorgänge, Ausbildungsinhalte und Fachbegriffe.</p>`}
+        ${p.beruf === "eigen" ? `<div class="btn-row" style="margin-top:10px"><button type="button" class="btn ${b ? "" : "primary"}" data-act="pack-ai" ${ui.packBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.packBusy ? "KI erstellt …" : b ? "Mit KI neu erstellen" : "Berufspaket mit KI erstellen"}</button></div>` : ""}
+      </section>`;
+}
+async function makeBerufPack() {
+  const p = state.settings.profile;
+  ui.packBusy = true; render();
+  try {
+    const res = await aiCall({ mode: "beruf", name: p.berufName, fachrichtung: p.fachrichtung, land: LAENDER[p.land], dauer: p.dauer });
+    const pack = sanitizePack({ ...res, id: "eigen", name: p.berufName });
+    if (!pack || !pack.lernfelder.length) throw new Error("Paket unvollständig");
+    state.berufPack = pack; saveState();
+    toast(`Berufspaket erstellt: ${pack.lernfelder.length} Lernfelder, ${pack.taetigkeiten.length} Tätigkeiten. Bitte Lernfelder kurz prüfen.`, { ms: 8000 });
+  } finally { ui.packBusy = false; render(); }
+}
+
 /* ==========================================================
    Berichtsheft
    ========================================================== */
@@ -2897,7 +3527,7 @@ function renderReport(route) {
   const n = route.n, r = repDraft(n), w = weekRange(n), head = repHead(n, r), cur = Math.max(1, weekNo(todayKey()));
   const saved = Object.keys(state.reports).map(Number).sort((a, b) => b - a);
   const weekOrders = state.orders.filter(o => w.days.includes(dkey(o.at)));
-  const tab = ["pick", "archive"].includes(ui.repTab) ? ui.repTab : "edit";
+  const tab = ["pick", "archive", "overview"].includes(ui.repTab) ? ui.repTab : "edit";
   const archived = Object.keys(state.reports).map(Number).filter(i => state.reports[i].archived).sort((a, b) => b - a);
   const archiveTab = `
     <section class="panel panel-pad">
@@ -2913,11 +3543,12 @@ function renderReport(route) {
         <p class="hint-text">Dieser Nachweis ist fertig und abgelegt. Zum Ändern zuerst zurückholen.</p>
         <div class="btn-row"><button type="button" class="btn primary" data-act="rep-pdf">${icon("print", 15)} PDF speichern</button><button type="button" class="btn" data-act="rep-print">Drucken</button><button type="button" class="btn" data-act="rep-unarchive">Zurückholen und bearbeiten</button></div>
       </section>
-      <div><div class="sec-head"><h2>Vorschau (A4)</h2><span class="hint-text">Gesamt ${esc(sumH(r)) || "0"} Std.</span></div><div class="sheet-wrap" id="sheetPreview">${ihkSheet(n, r)}</div></div>
+      <div><div class="sec-head"><h2>Vorschau (A4)</h2><span class="hint-text">Gesamt ${esc(sumH(r)) || "0"} Std.</span></div><div class="sheet-wrap" id="sheetPreview">${sheetFor(n, r)}</div></div>
     </div>`;
   const opts = [];
   for (let i = Math.max(cur + 1, ...saved, 1); i >= 1; i--) opts.push(`<option value="${i}" ${i === n ? "selected" : ""}>Nr. ${i} · ${fmtDs(weekRange(i).from)}–${fmtD(weekRange(i).to)}${state.reports[i]?.done ? " ✓" : ""}</option>`);
-  const sick = new Set(r.sick || []);
+  const sick = new Set(r.sick || []), v = vorlage();
+  if (v === "tag" && (!r.tage || !Object.keys(r.tage).length)) r.tage = tageFrom(n, r);
   const editTab = `
     <div class="edit-grid">
       <form class="stack" id="repForm" style="gap:14px" autocomplete="off">
@@ -2930,16 +3561,23 @@ function renderReport(route) {
           <p class="hint-text" style="margin-top:8px">„Krank“ markieren, dann „Zufallsbericht“: kranke Tage stehen als Stichpunkt im Bericht, an Schultagen unter Berufsschule.</p>
         </section>
         <section class="panel panel-pad stack" style="gap:12px">
-          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-ai" ${ui.repAiBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.repAiBusy ? "KI schreibt …" : "Mit KI schreiben"}</button><button type="button" class="btn" data-act="rep-gen">${icon("reset", 15)} Alles zufällig</button><span class="hint-text" style="align-self:center">KI lernt aus deinen archivierten Nachweisen, Schulthemen nach bayerischem Lehrplan · immer ${w.days.length * 8} Std. · danach frei bearbeitbar</span></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-act="rep-ai" ${ui.repAiBusy ? "disabled" : ""}>${icon("bolt", 15)} ${ui.repAiBusy ? "KI schreibt …" : "Mit KI schreiben"}</button><button type="button" class="btn" data-act="rep-gen">${icon("reset", 15)} Alles zufällig</button><span class="hint-text" style="align-self:center">KI lernt aus deinen archivierten Nachweisen · Schulthemen aus deinen Lernfeldern · ${hNum(w.days.length * tagesSoll() / 60)} Std. · danach frei bearbeitbar</span></div>
+          ${v === "tag" ? `<div class="stack" style="gap:10px">${w.days.map(k => { const d = (r.tage || {})[k] || {}; return `<div class="day-edit"><div class="field"><label for="rT${k}">${WDL[pkey(k).getDay()]}, ${fmtD(k)}</label><textarea class="textarea" id="rT${k}" data-day="${k}" rows="4">${esc(d.t || "")}</textarea></div><div class="field"><label for="rTh${k}">Std.</label><input class="input" id="rTh${k}" inputmode="decimal" value="${esc(d.h || "")}"></div></div>`; }).join("")}</div>` : `
           <div class="field"><div class="lbl-row"><label for="rBetrieb">Betriebliche Tätigkeit <span class="hint-text">– ein Stichpunkt pro Zeile</span></label><button type="button" class="btn small" data-act="rep-gen" data-value="betrieb">${icon("bolt", 13)} Zufall</button></div><textarea class="textarea" id="rBetrieb" rows="10">${esc(r.betrieb)}</textarea></div>
-          <div class="form"><div class="field"><label for="rHB">Stunden Betrieb</label><input class="input" id="rHB" inputmode="decimal" value="${esc(r.hBetrieb)}"></div><div class="field"><label for="rHS">Stunden Berufsschule</label><input class="input" id="rHS" inputmode="decimal" value="${esc(r.hSchule)}"></div></div>
-          <div class="field"><div class="lbl-row"><label for="rVT">Arbeitsvorgang dieser Woche (Überschrift)</label><button type="button" class="btn small" data-act="rep-gen" data-value="vorgang">${icon("bolt", 13)} Zufall</button></div><input class="input" id="rVT" value="${esc(r.vorgangTitel)}" placeholder="z. B. Brief vorbereiten für den Versand"></div>
+          ${v === "ihk-woche" ? "" : `<div class="field"><label for="rU">${v === "hwk" ? "Unterweisungen, überbetriebliche Ausbildung, Schulungen" : "Unterweisungen, betrieblicher Unterricht, sonstige Schulungen"} <span class="hint-text">– optional</span></label><textarea class="textarea" id="rU" rows="3">${esc(r.unterweisung || "")}</textarea></div>`}
+          <div class="form"><div class="field"><label for="rHB">Stunden Betrieb</label><input class="input" id="rHB" inputmode="decimal" value="${esc(r.hBetrieb)}"></div>${v === "ihk-woche" ? "" : `<div class="field"><label for="rHU">Stunden Unterweisung</label><input class="input" id="rHU" inputmode="decimal" value="${esc(r.hUnterweisung || "")}"></div>`}<div class="field"><label for="rHS">Stunden Berufsschule</label><input class="input" id="rHS" inputmode="decimal" value="${esc(r.hSchule)}"></div></div>
+          ${v === "ihk-woche" ? `          <div class="field"><div class="lbl-row"><label for="rVT">Arbeitsvorgang dieser Woche (Überschrift)</label><button type="button" class="btn small" data-act="rep-gen" data-value="vorgang">${icon("bolt", 13)} Zufall</button></div><input class="input" id="rVT" value="${esc(r.vorgangTitel)}" placeholder="z. B. Brief vorbereiten für den Versand"></div>
           <div class="field"><label for="rV">Schritte <span class="hint-text">– einer pro Zeile, wird mit „->“ gedruckt</span></label><textarea class="textarea" id="rV" rows="6">${esc(r.vorgang)}</textarea>
-            ${weekOrders.length ? `<div class="btn-row" style="margin-top:4px">${weekOrders.slice(0, 3).map(o => `<button type="button" class="btn small" data-act="rep-order" data-value="${o.id}">Vorschlag: Auftrag ${esc((getProp(o.propId) || {}).ve || "")}</button>`).join("")}</div>` : ""}</div>
-          <div class="field"><div class="lbl-row"><label for="rS">Berufsschule (Themen des Unterrichts)</label><button type="button" class="btn small" data-act="rep-gen" data-value="schule">${icon("bolt", 13)} Zufall</button></div><textarea class="textarea" id="rS" rows="5">${esc(r.schule)}</textarea></div>
+            ${weekOrders.length ? `<div class="btn-row" style="margin-top:4px">${weekOrders.slice(0, 3).map(o => `<button type="button" class="btn small" data-act="rep-order" data-value="${o.id}">Vorschlag: Auftrag ${esc((getProp(o.propId) || {}).ve || "")}</button>`).join("")}</div>` : ""}</div>` : ""}
+          <div class="field"><div class="lbl-row"><label for="rS">Berufsschule (Themen des Unterrichts)</label><button type="button" class="btn small" data-act="rep-gen" data-value="schule">${icon("bolt", 13)} Zufall</button></div><textarea class="textarea" id="rS" rows="5">${esc(r.schule)}</textarea></div>`}
+          <details class="dictate" ${ui.repNote || ui.dictating ? "open" : ""}><summary>${icon("edit", 15)} Notiz diktieren oder schreiben → Stichpunkte</summary>
+            <div class="field" style="margin-top:8px"><label for="rNote">Was hast du gemacht? <span class="hint-text">– frei erzählen, wird nicht gespeichert</span></label><textarea class="textarea" id="rNote" rows="3">${esc(ui.repNote || "")}</textarea></div>
+            <div class="btn-row" style="margin-top:6px">${SpeechRec ? `<button type="button" class="btn small" data-act="rep-dictate" aria-pressed="${!!ui.dictating}">${ui.dictating ? "■ Stopp" : "🎤 Diktieren"}</button>` : ""}<button type="button" class="btn small primary" data-act="rep-stich" ${ui.stichBusy ? "disabled" : ""}>${ui.stichBusy ? "KI arbeitet …" : "In Stichpunkte umwandeln"}</button><span class="hint-text" style="align-self:center">Mit Anmeldung per KI, sonst Satz für Satz.</span></div>
+          </details>
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="rep-save">Speichern</button>
             <button type="button" class="btn" data-act="rep-pdf">${icon("print", 15)} PDF speichern</button>
+            ${v === "eigene" ? `<button type="button" class="btn" data-act="rep-word">${icon("download", 15)} Word erstellen</button>` : ""}
             <button type="button" class="btn" data-act="rep-archive">${icon("archive", 15)} Fertig · ins Archiv</button>
             <button type="button" class="btn" data-act="rep-regen">${icon("reset", 15)} Nur echte Einträge</button>
             ${r.saved ? `<button type="button" class="btn danger" data-act="rep-delete">Löschen</button>` : ""}
@@ -2948,7 +3586,7 @@ function renderReport(route) {
       </form>
       <div>
         <div class="sec-head"><h2>Vorschau (A4)</h2><span class="hint-text">Gesamt ${esc(sumH(r)) || "0"} Std.</span></div>
-        <div class="sheet-wrap" id="sheetPreview">${ihkSheet(n, r)}</div>
+        <div class="sheet-wrap" id="sheetPreview">${sheetFor(n, r)}</div>
       </div>
     </div>`;
   const maxN = Math.max(cur + 1, ...saved, 1), rows = [];
@@ -2993,20 +3631,65 @@ function renderReport(route) {
       </div>
       <span class="chip ${r.done ? "ok" : r.saved ? "accent" : ""}">Nr. ${head.nr} · ${r.archived ? "Im Archiv" : r.done ? "Fertig" : r.saved ? "Entwurf gespeichert" : "Noch nicht gespeichert"}</span>
     </div>
-    <div class="tabs" role="group" aria-label="Bereich" style="margin-bottom:16px"><button type="button" data-act="rep-tab" data-value="edit" aria-pressed="${tab === "edit"}">Nachweis</button><button type="button" data-act="rep-tab" data-value="pick" aria-pressed="${tab === "pick"}">Auswahl: Nr. &amp; Datum</button><button type="button" data-act="rep-tab" data-value="archive" aria-pressed="${tab === "archive"}">Archiv${archived.length ? ` (${archived.length})` : ""}</button></div>
-    ${tab === "pick" ? pickTab : tab === "archive" ? archiveTab : r.archived ? archivedView : editTab}`;
+    <div class="tabs" role="group" aria-label="Bereich" style="margin-bottom:16px"><button type="button" data-act="rep-tab" data-value="edit" aria-pressed="${tab === "edit"}">Nachweis</button><button type="button" data-act="rep-tab" data-value="pick" aria-pressed="${tab === "pick"}">Auswahl: Nr. &amp; Datum</button><button type="button" data-act="rep-tab" data-value="archive" aria-pressed="${tab === "archive"}">Archiv${archived.length ? ` (${archived.length})` : ""}</button><button type="button" data-act="rep-tab" data-value="overview" aria-pressed="${tab === "overview"}">Übersicht &amp; Export</button></div>
+    ${tab === "pick" ? pickTab : tab === "archive" ? archiveTab : tab === "overview" ? repOverview() : r.archived ? archivedView : editTab}`;
+}
+/* Fortschritt, Lücken und Abgleich mit dem Ausbildungsrahmenplan */
+const repText = r => norm([r.betrieb, r.vorgangTitel, r.vorgang, r.unterweisung, ...Object.values(r.tage || {}).map(d => d.t)].join("\n"));
+function rahmenStand() {
+  const b = berufPack() || {}, texts = Object.values(state.reports).map(repText), done = new Set(state.settings.rahmenDone);
+  return (b.rahmenplan || []).map(([titel, sw]) => {
+    const keys = (sw || []).map(norm).filter(x => x.length >= 3);
+    const hits = keys.length ? texts.filter(t => keys.some(k => t.includes(k))).length : 0;
+    return { titel, hits, done: done.has(titel) };
+  });
+}
+function repOverview() {
+  const cur = Math.max(1, weekNo(todayKey())), all = [];
+  for (let i = 1; i <= cur; i++) all.push(i);
+  const done = all.filter(i => state.reports[i] && state.reports[i].done), draft = all.filter(i => state.reports[i] && !state.reports[i].done);
+  const missing = all.filter(i => !state.reports[i] && i < cur && weekRange(i).days.some(k => !holiday(k)));
+  const pct = all.length ? Math.round(done.length / all.length * 100) : 0;
+  const rp = rahmenStand(), rpOk = rp.filter(x => x.done || x.hits).length;
+  const saved = Object.keys(state.reports).map(Number).sort((a, b) => a - b);
+  return `
+    <div class="stack" style="gap:16px">
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Fortschritt</h2><span class="hint-text">${done.length} von ${all.length} Wochen fertig</span></div>
+        <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+        <div class="stat-row" style="margin-top:12px"><div><div class="hint-text">Fertig</div><div class="big-num">${done.length}</div></div><div><div class="hint-text">Entwurf</div><div class="big-num">${draft.length}</div></div><div><div class="hint-text">Fehlen</div><div class="big-num" ${missing.length ? 'style="color:var(--red)"' : ""}>${missing.length}</div></div></div>
+        ${missing.length ? `<h3 style="margin:14px 0 6px">Fehlende Nachweise</h3><div class="btn-row">${missing.slice(0, 40).map(i => `<button type="button" class="btn small" data-act="rep-open" data-value="${i}">Nr. ${i} · KW ${weekRange(i).kw}</button>`).join("")}${missing.length > 40 ? `<span class="hint-text">… und ${missing.length - 40} weitere</span>` : ""}</div>` : `<p class="hint-text" style="margin-top:10px">Keine Lücken. Sehr gut!</p>`}
+        ${draft.length ? `<h3 style="margin:14px 0 6px">Noch nicht fertig</h3><div class="btn-row">${draft.map(i => `<button type="button" class="btn small" data-act="rep-open" data-value="${i}">Nr. ${i}</button>`).join("")}</div>` : ""}
+      </section>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Export für die Kammer</h2></div>
+        <p class="hint-text" style="margin-bottom:10px">Alle gespeicherten Nachweise in einem PDF, vorne mit Deckblatt und Übersicht – z. B. zur Anmeldung zur Abschlussprüfung.</p>
+        <div class="btn-row"><button type="button" class="btn primary" data-act="rep-export" ${saved.length ? "" : "disabled"}>${icon("print", 15)} PDF mit Deckblatt (${saved.length})</button><button type="button" class="btn" data-act="rep-pdf-all" ${saved.length ? "" : "disabled"}>Nur Nachweise</button></div>
+      </section>
+      <section class="panel panel-pad">
+        <div class="sec-head"><h2>Ausbildungsrahmenplan</h2></div>${rp.length ? `<p class="hint-text" style="margin:-4px 0 8px"><strong>${rpOk} von ${rp.length}</strong> Bereichen vorgekommen</p>` : ""}
+        ${rp.length ? `<p class="hint-text" style="margin-bottom:10px">Die App sucht in deinen Nachweisen nach Stichworten zu jedem Bereich. Was nie vorkommt, solltest du mit deinem Ausbilder ansprechen. Häkchen setzen, wenn ein Bereich erledigt ist.</p>
+          <div class="stack" style="gap:0">${rp.map((x, i) => `<label class="item rp-row"><input type="checkbox" data-act="rahmen-toggle" data-value="${i}" ${x.done ? "checked" : ""}><span class="grow">${esc(x.titel)}</span>${x.hits ? `<span class="chip ok">${plural(x.hits, "Woche", "Wochen")}</span>` : x.done ? `<span class="chip">erledigt</span>` : `<span class="chip warn">noch nicht</span>`}</label>`).join("")}</div>`
+          : `<p class="hint-text">Für deinen Beruf ist noch kein Rahmenplan hinterlegt. In den Einstellungen unter „Beruf“ kannst du ein Berufspaket per KI erstellen.</p>`}
+      </section>
+    </div>`;
 }
 function readRepForm() {
   const r = ui.rep;
   if (!r || !$("#repForm")) return r;
-  Object.assign(r, { betrieb: $("#rBetrieb").value, hBetrieb: $("#rHB").value.trim(), hSchule: $("#rHS").value.trim(), vorgangTitel: $("#rVT").value, vorgang: $("#rV").value, schule: $("#rS").value });
+  const val = (sel, k, trim) => { const e = $(sel); if (e) r[k] = trim ? e.value.trim() : e.value; };
+  val("#rBetrieb", "betrieb"); val("#rHB", "hBetrieb", 1); val("#rHS", "hSchule", 1); val("#rVT", "vorgangTitel"); val("#rV", "vorgang"); val("#rS", "schule"); val("#rU", "unterweisung"); val("#rHU", "hUnterweisung", 1);
+  const tage = $$("#repForm textarea[data-day]");
+  if (tage.length) { r.tage = {}; tage.forEach(e => { r.tage[e.dataset.day] = { t: e.value, h: ($(`#rTh${e.dataset.day}`) || {}).value || "" }; }); }
+  const note = $("#rNote"); if (note) ui.repNote = note.value;
   return r;
 }
 function saveReport(done) {
   const r = readRepForm();
   if (!r) return;
   if (typeof done === "boolean") r.done = done;
-  state.reports[r.n] = { betrieb: r.betrieb.trim(), hBetrieb: r.hBetrieb, hSchule: r.hSchule, vorgangTitel: r.vorgangTitel.trim(), vorgang: r.vorgang.trim(), schule: r.schule.trim(), done: !!r.done, savedAt: Date.now(), archived: r.archived || null, sick: [...(r.sick || [])], nr: r.nr || 0, from: r.from || "", to: r.to || "" };
+  state.reports[r.n] = { betrieb: r.betrieb.trim(), hBetrieb: r.hBetrieb, hSchule: r.hSchule, vorgangTitel: r.vorgangTitel.trim(), vorgang: r.vorgang.trim(), schule: r.schule.trim(),
+    unterweisung: (r.unterweisung || "").trim(), hUnterweisung: r.hUnterweisung || "", tage: sanitizeTage(r.tage), done: !!r.done, savedAt: Date.now(), archived: r.archived || null, sick: [...(r.sick || [])], nr: r.nr || 0, from: r.from || "", to: r.to || "" };
   r.saved = true; r.dirty = false;
   saveState();
 }
@@ -3020,18 +3703,19 @@ function renderSettings() {
   return `
     <div class="page-head"><div><p class="eyebrow">Allgemein · Einstellungen</p><h1>Alles nach <span class="hl">deinem Takt.</span></h1><p class="lede">Berichtsheft, Synchronisierung, Aufträge, Darstellung und Daten.</p></div></div>
     <div class="settings">
-      ${REPORT_ONLY ? schoolFormHtml().replace('style="margin-top:18px"', "") : ""}
-      <form class="setting" id="profileForm">
-        <h3>Berichtsheft</h3><p>Kopfdaten für den Ausbildungsnachweis. Nachweis-Nr. und Ausbildungsjahr werden ab dem Ausbildungsbeginn berechnet.</p>
-        <div class="form">
-          <div class="field"><label for="pName">Name</label><input class="input" id="pName" value="${esc(p.name)}"></div>
-          <div class="field"><label for="pStart">Ausbildungsbeginn</label><input class="input" id="pStart" type="date" value="${esc(p.start)}"></div>
-          <div class="field"><label for="pFirma">Firma</label><input class="input" id="pFirma" value="${esc(p.firma)}"></div>
-          <div class="field"><label for="pAbt">Ausbildungsabteilung</label><input class="input" id="pAbt" value="${esc(p.abteilung)}"></div>
-          <div class="field"><label for="pSw">Verwaltungssoftware <span class="hint-text">– für Vorschläge</span></label><input class="input" id="pSw" value="${esc(p.software)}" placeholder="z. B. Immotion"></div>
-        </div>
-        <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button></div>
+      <form class="setting" id="ausbForm" autocomplete="off">
+        <h3>Ausbildung</h3><p>Beruf, Beginn und Bundesland bestimmen Nachweis-Nr., Lernfelder, Feiertage und Ferien.</p>
+        <div class="form">${ausbFields("ausbildung")}</div>
+        <h3 style="margin-top:18px">Betrieb und Arbeitszeit</h3>
+        <div class="form">${ausbFields("betrieb")}</div>
+        <h3 style="margin-top:18px">Berufsschule</h3><p>Aus diesen Angaben trägt Azubino die Schultage ein, ohne Ferien und Feiertage.</p>
+        <div class="form">${ausbFields("schule")}</div>
+        <h3 style="margin-top:18px">Berichtsheft und Bereiche</h3>
+        <div class="form">${ausbFields("bericht")}</div>
+        <div class="btn-row" style="margin-top:12px"><button type="submit" class="btn primary">Speichern</button><button type="button" class="btn" data-act="ferien-refresh">Ferien neu laden</button><span class="hint-text" style="align-self:center">${state.settings.ferien.at ? `Ferien ${esc(LAENDER[state.settings.ferien.land] || "")} geladen am ${fmtD(dkey(state.settings.ferien.at))}` : "Ferien noch nicht geladen"}</span></div>
       </form>
+      ${berufSetting()}
+      ${!state.settings.modules.schule ? schoolFormHtml().replace('style="margin-top:18px"', "") : ""}
       <section class="setting">
         <h3>Darstellung und Bedienung</h3><p>„System“ folgt deinem Gerät.</p>
         <div class="tabs" role="group" aria-label="Darstellung">${[["system", "System"], ["light", "Hell"], ["dark", "Dunkel"]].map(([v, l]) => `<button type="button" data-act="theme-set" data-value="${v}" aria-pressed="${st.theme === v}">${l}</button>`).join("")}</div>
@@ -3100,6 +3784,7 @@ function renderPage(route) {
     case "work": return renderWork();
     case "homework": return renderHomework();
     case "grades": return renderGrades();
+    case "exam": return renderExam();
     case "cards": return renderCards(route);
     case "time": return renderTime(route);
     case "settings": return renderSettings();
@@ -3132,6 +3817,12 @@ function renderAuth() {
 }
 function render(opts = {}) {
   if (!sync.session) { renderAuth(); return; }
+  if (!state.settings.profile.setupDone) {
+    document.documentElement.dataset.theme = resolveTheme();
+    document.title = "Einrichtung – Azubino";
+    $("#app").innerHTML = `<div class="setup-wrap"><div class="setup-brand">${logo("lgs")}<button type="button" class="btn small" data-act="sync-logout">Abmelden</button></div><main class="page enter" id="main" tabindex="-1">${renderSetup()}</main></div>`;
+    return;
+  }
   const route = ui.route = parseRoute();
   if (route.view === "list") { if (ui.lastList !== route.listId) { resetListUi(); ui.lastList = route.listId; } } else ui.lastList = null;
   /* Bericht beim Verlassen oder Wochenwechsel als Entwurf sichern */
@@ -3480,7 +4171,7 @@ function addQuickTask(list) {
 function printReport() {
   const r = readRepForm();
   if (!r) return;
-  $("#print-root").innerHTML = ihkSheet(r.n, r);
+  $("#print-root").innerHTML = sheetFor(r.n, r);
   setTimeout(() => window.print(), 30);
 }
 /* ---------- PDF direkt speichern (A4, Aufbau wie ihkSheet, ohne Druckdialog) ---------- */
@@ -3557,11 +4248,156 @@ function pdfPage(n, r) {
   [[22, 57.5, "Datum"], [62, 98, "Auszubildender"], [102, 135.5, "Datum"], [139.5, 173, "Ausbilder"]].forEach(([a, b, l]) => { line(X + a, ys[9] + 11, X + b, ys[9] + 11, 0.4); text(l, X + a, ys[9] + 15, 9); });
   return ops.join("\n");
 }
+/* PDF-Seite für die allgemeinen Vorlagen (Aufbau wie genSheet) */
+function pdfCanvas() {
+  const mm = v => v * 72 / 25.4, H = 297, ops = [];
+  const line = (x1, y1, x2, y2, lw = 0.5) => ops.push(`${lw} w ${mm(x1).toFixed(2)} ${mm(H - y1).toFixed(2)} m ${mm(x2).toFixed(2)} ${mm(H - y2).toFixed(2)} l S`);
+  const rect = (x, y, w, h, lw = 1) => { line(x, y, x + w, y, lw); line(x, y + h, x + w, y + h, lw); line(x, y, x, y + h, lw); line(x + w, y, x + w, y + h, lw); };
+  const text = (t, x, y, size = 10, bold = false) => ops.push(`BT /${bold ? "F2" : "F1"} ${size} Tf ${mm(x).toFixed(2)} ${mm(H - y).toFixed(2)} Td ${pdfStr(t)} Tj ET`);
+  const center = (t, x1, x2, y, size = 10, bold = false) => text(t, (x1 + x2) / 2 - textW(t, size, bold) / 72 * 25.4 / 2, y, size, bold);
+  const block = (items, x, y, w, hgt, maxSize = 10) => {
+    for (let size = maxSize; size >= 6.5; size -= 0.5) {
+      const lh = size * 0.46, rows = [];
+      items.forEach(t => wrapText(t, size, false, mm(w)).forEach(l => rows.push(l)));
+      if (rows.length * lh <= hgt - 2 || size === 6.5) { rows.slice(0, Math.floor((hgt - 2) / lh)).forEach((l, i) => text(l, x, y + 4 + i * lh, size)); return; }
+    }
+  };
+  return { ops, line, rect, text, center, block, mm };
+}
+function genPdfPage(n, r) {
+  const c = pdfCanvas(), sp = sheetSpec(n, r), X = 17.5, W = 175, HC = X + W - 20;
+  let y = 15;
+  c.text(sp.title, X, y + 5, 13, true); c.text(sp.sub, X + W - textW(sp.sub, 9) / 72 * 25.4, y + 5, 9);
+  y += 9;
+  const y0 = y;
+  for (let i = 0; i < 8; i += 2) {
+    c.text(sp.head[i][0], X + 2, y + 3.6, 7.5); c.text(String(sp.head[i][1] || "").slice(0, 60), X + 2, y + 8, 10);
+    c.text(sp.head[i + 1][0], X + 102, y + 3.6, 7.5); c.text(String(sp.head[i + 1][1] || "").slice(0, 40), X + 102, y + 8, 10);
+    y += 10; c.line(X, y, X + W, y);
+  }
+  c.line(X + 100, y0, X + 100, y);
+  const hs = secHeights(sp.secs, 168);
+  sp.secs.forEach((s, i) => {
+    c.text(s.label, X + 2, y + 4.3, 9, true); c.center("Stunden", HC, X + W, y + 4.3, 9); y += 6; c.line(X, y, X + W, y, 0.3);
+    c.block(s.lines, X + 2, y + 0.5, W - 24, hs[i]); c.center(s.h || "", HC, X + W, y + 5);
+    c.line(HC, y - 6, HC, y + hs[i]); y += hs[i]; c.line(X, y, X + W, y);
+  });
+  c.text("Gesamtstunden", X + 2, y + 5.3, 9, true); c.center(sp.total || "", HC, X + W, y + 5.3, 10, true); c.line(HC, y, HC, y + 8); y += 8; c.line(X, y, X + W, y);
+  c.text(sp.note, X + 2, y + 4.5, 8); y += 22;
+  c.line(X + 4, y - 4, X + 82, y - 4, 0.4); c.text(sp.sig[0], X + 4, y, 8.5);
+  c.line(X + 92, y - 4, X + 171, y - 4, 0.4); c.text(sp.sig[1], X + 92, y, 8.5);
+  y += 3; c.rect(X, y0 - 0.0, W, y - y0); c.line(X, y0, X + W, y0, 1);
+  return c.ops.join("\n");
+}
+/* Deckblatt und Übersicht für den Export an die Kammer */
+function pdfCover(list) {
+  const c = pdfCanvas(), p = state.settings.profile, b = berufPack() || {}, X = 25;
+  const end = dkey(addMonths(pkey(p.start), p.dauer || 36));
+  c.text("Ausbildungsnachweise", X, 70, 26, true);
+  c.text(`(${VORLAGEN[vorlage()] || "Berichtsheft"})`, X, 80, 11);
+  const rows = [["Name", p.name], ["Ausbildungsberuf", berufName() + (p.fachrichtung ? ` – ${p.fachrichtung}` : "")], ["Ausbildungsbetrieb", p.firma], ["Abteilung", p.abteilung],
+    ["Zuständige Stelle", b.kammer === "HWK" || vorlage() === "hwk" ? "Handwerkskammer" : "Industrie- und Handelskammer"], ["Ausbildungszeit", `${fmtD(p.start)} – ${fmtD(end)}`],
+    ["Enthaltene Nachweise", `Nr. ${repHead(list[0][0], list[0][1]).nr} bis ${repHead(list[list.length - 1][0], list[list.length - 1][1]).nr} (${plural(list.length, "Woche", "Wochen")})`], ["Erstellt am", fmtD(todayKey())]];
+  rows.forEach(([a, v], i) => { const y = 110 + i * 13; c.text(a, X, y, 9); c.text(String(v || "–").slice(0, 80), X, y + 5.5, 12, true); c.line(X, y + 8, 185, y + 8, 0.3); });
+  c.text("Erstellt mit Azubino", X, 280, 8);
+  return c.ops.join("\n");
+}
+function pdfOverview(list) {
+  const pages = [], per = 38;
+  for (let i = 0; i < list.length; i += per) {
+    const c = pdfCanvas(), X = 17.5;
+    c.text(i ? "Übersicht (Fortsetzung)" : "Übersicht der Ausbildungsnachweise", X, 22, 14, true);
+    const cols = [[X, "Nr."], [X + 16, "Zeitraum"], [X + 70, "KW"], [X + 86, "Ausb.-jahr"], [X + 108, "Stunden"], [X + 130, "Status"]];
+    cols.forEach(([x, t]) => c.text(t, x, 32, 9, true)); c.line(X, 34, X + 175, 34, 0.6);
+    list.slice(i, i + per).forEach(([n, r], j) => {
+      const h = repHead(n, r), y = 40 + j * 6.4;
+      [String(h.nr), `${fmtD(h.from)} – ${fmtD(h.to)}`, String(weekRange(n).kw), String(trainingYear(h.to)), sumH(r) || "–", r.archived ? "Archiv" : r.done ? "Fertig" : "Entwurf"].forEach((t, k) => c.text(t, cols[k][0], y, 9));
+      c.line(X, y + 2, X + 175, y + 2, 0.2);
+    });
+    pages.push(c.ops.join("\n"));
+  }
+  return pages;
+}
+/* ---------- Eigene Word-Vorlage: ZIP lesen, Platzhalter füllen, ZIP schreiben ---------- */
+const WORD_KEYS = ["NAME", "FIRMA", "ABTEILUNG", "BERUF", "NR", "JAHR", "KW", "VON", "BIS", "BETRIEB", "UNTERWEISUNG", "SCHULE", "VORGANG_TITEL", "VORGANG", "STD_BETRIEB", "STD_UNTERWEISUNG", "STD_SCHULE", "STD_GESAMT", "MO", "DI", "MI", "DO", "FR", "SA", "STD_MO", "STD_DI", "STD_MI", "STD_DO", "STD_FR", "STD_SA", "DATUM"];
+const b64ToBytes = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+const bytesToB64 = u => { let s = ""; for (let i = 0; i < u.length; i += 32768) s += String.fromCharCode.apply(null, u.subarray(i, i + 32768)); return btoa(s); };
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xffffffff; for (let i = 0; i < u.length; i++) c = CRC_T[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+async function inflateRaw(u) { const s = new Blob([u]).stream().pipeThrough(new DecompressionStream("deflate-raw")); return new Uint8Array(await new Response(s).arrayBuffer()); }
+function zipEntries(u) {
+  const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+  let e = u.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("Keine gültige .docx-Datei");
+  const cnt = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true);
+  const out = [], dec = new TextDecoder();
+  for (let i = 0; i < cnt; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("ZIP beschädigt");
+    const method = dv.getUint16(p + 10, true), crc = dv.getUint32(p + 16, true), csize = dv.getUint32(p + 20, true), size = dv.getUint32(p + 24, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const name = dec.decode(u.subarray(p + 46, p + 46 + nl));
+    const lnl = dv.getUint16(off + 26, true), lxl = dv.getUint16(off + 28, true), start = off + 30 + lnl + lxl;
+    out.push({ name, method, crc, size, data: u.subarray(start, start + csize) });
+    p += 46 + nl + xl + cl;
+  }
+  return out;
+}
+function zipBuild(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let off = 0;
+  files.forEach(f => {
+    const nm = enc.encode(f.name), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, f.method, true);
+    h.setUint32(14, f.crc, true); h.setUint32(18, f.data.length, true); h.setUint32(22, f.size, true); h.setUint16(26, nm.length, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, f.method, true);
+    c.setUint32(16, f.crc, true); c.setUint32(20, f.data.length, true); c.setUint32(24, f.size, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    parts.push(new Uint8Array(h.buffer), nm, f.data); central.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + f.data.length;
+  });
+  const cSize = central.reduce((a, x) => a + x.length, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cSize, true); end.setUint32(16, off, true);
+  const all = [...parts, ...central, new Uint8Array(end.buffer)], out = new Uint8Array(all.reduce((a, x) => a + x.length, 0));
+  let p = 0; all.forEach(x => { out.set(x, p); p += x.length; });
+  return out;
+}
+function wordValues(n, r) {
+  const h = repHead(n, r), p = state.settings.profile, tage = r.tage && Object.keys(r.tage).length ? r.tage : tageFrom(n, r), v = {};
+  Object.assign(v, { NAME: p.name, FIRMA: p.firma, ABTEILUNG: p.abteilung, BERUF: berufName(), NR: h.nr, JAHR: trainingYear(h.to), KW: weekRange(n).kw, VON: fmtD(h.from), BIS: fmtD(h.to),
+    BETRIEB: bullet(r.betrieb).join("\n"), UNTERWEISUNG: bullet(r.unterweisung).join("\n"), SCHULE: bullet(r.schule).join("\n"), VORGANG_TITEL: r.vorgangTitel, VORGANG: bullet(r.vorgang).join("\n"),
+    STD_BETRIEB: r.hBetrieb, STD_UNTERWEISUNG: r.hUnterweisung, STD_SCHULE: r.hSchule, STD_GESAMT: sumH(r), DATUM: fmtD(todayKey()) });
+  ["SO", "MO", "DI", "MI", "DO", "FR", "SA"].forEach((d, i) => { const k = weekRange(n).days.find(x => pkey(x).getDay() === i), t = k && tage[k]; if (i) { v[d] = t ? bullet(t.t).join("\n") : ""; v["STD_" + d] = t ? t.h : ""; } });
+  return v;
+}
+const xmlEsc = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function fillXml(xml, vals) {
+  /* Platzhalter, die Word über mehrere Textstücke verteilt hat, zusammenführen */
+  xml = xml.replace(/\{(?:<[^>]+>)*\{((?:[^{}<]|<[^>]+>)*?)\}(?:<[^>]+>)*\}/g, (m, inner) => "{{" + inner.replace(/<[^>]+>/g, "") + "}}");
+  return xml.replace(/\{\{\s*([A-Za-z_]+)\s*\}\}/g, (m, k) => { k = k.toUpperCase(); return k in vals ? xmlEsc(vals[k]).split("\n").join('</w:t><w:br/><w:t xml:space="preserve">') : m; });
+}
+async function saveWord(n, r) {
+  const t = state.settings.wordTpl;
+  if (!t) { toast("Bitte zuerst in den Einstellungen eine Word-Vorlage hochladen."); return; }
+  if (!window.DecompressionStream) { toast("Dieser Browser kann keine Word-Dateien bearbeiten. Bitte Chrome, Edge oder Firefox nutzen."); return; }
+  try {
+    const vals = wordValues(n, r), enc = new TextEncoder(), files = [];
+    for (const f of zipEntries(b64ToBytes(t.data))) {
+      if (/^word\/(document|header\d*|footer\d*)\.xml$/.test(f.name)) {
+        const raw = f.method === 8 ? await inflateRaw(f.data) : f.data;
+        const data = enc.encode(fillXml(new TextDecoder().decode(raw), vals));
+        files.push({ name: f.name, method: 0, crc: crc32(data), size: data.length, data });
+      } else files.push(f);
+    }
+    const saved = await saveFile(`Ausbildungsnachweis_Nr_${repHead(n, r).nr}.docx`, zipBuild(files), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    if (saved) toast(`Word-Datei gespeichert: ${saved}`);
+  } catch (e) { toast(`Word-Datei konnte nicht erstellt werden: ${e.message}`, { ms: 7000 }); }
+}
 /* Speichern-Dialog (Explorer), wo der Browser es kann (Chrome, Edge); sonst normaler Download */
 async function saveFile(name, bytes, type) {
   if (window.showSaveFilePicker && window.isSecureContext && window.self === window.top) {
     try {
-      const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "PDF-Dokument", accept: { [type]: [".pdf"] } }] });
+      const ext = name.slice(name.lastIndexOf("."));
+      const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: ext === ".pdf" ? "PDF-Dokument" : "Word-Dokument", accept: { [type]: [ext] } }] });
       const w = await h.createWritable(); await w.write(new Blob([bytes], { type })); await w.close();
       return h.name;
     } catch (e) { if (e && e.name === "AbortError") return null; }
@@ -3569,7 +4405,7 @@ async function saveFile(name, bytes, type) {
   download(name, bytes, type);
   return name;
 }
-function savePdf(list) {
+function savePdf(list, opts = {}) {
   list = list.filter(([, r]) => r);
   if (!list.length) { toast("Bitte den Nachweis zuerst speichern."); return; }
   const objs = [], pageIds = [];
@@ -3577,8 +4413,9 @@ function savePdf(list) {
   add("<< /Type /Catalog /Pages 2 0 R >>"); add("");
   add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
-  list.forEach(([n, r]) => {
-    const c = pdfPage(n, r), cid = add(`<< /Length ${c.length} >>\nstream\n${c}\nendstream`);
+  const pages = [...(opts.cover ? [pdfCover(list), ...pdfOverview(list)] : []), ...list.map(([n, r]) => vorlage() === "ihk-woche" ? pdfPage(n, r) : genPdfPage(n, r))];
+  pages.forEach(c => {
+    const cid = add(`<< /Length ${c.length} >>\nstream\n${c}\nendstream`);
     pageIds.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${cid} 0 R >>`));
   });
   objs[1] = `<< /Type /Pages /Kids [${pageIds.map(i => i + " 0 R").join(" ")}] /Count ${pageIds.length} >>`;
@@ -3589,13 +4426,8 @@ function savePdf(list) {
   const bytes = new Uint8Array(out.length);
   for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
   const h0 = repHead(list[0][0], list[0][1]), hl = repHead(list[list.length - 1][0], list[list.length - 1][1]);
-  const name = list.length === 1 ? `Berichtsheft_Woche_${h0.nr}.pdf` : `Berichtsheft_Woche_${h0.nr}-${hl.nr}.pdf`;
+  const name = opts.cover ? `Ausbildungsnachweise_${(state.settings.profile.name || "Azubi").replace(/[^\wäöüÄÖÜß-]+/g, "_")}_Nr_${h0.nr}-${hl.nr}.pdf` : list.length === 1 ? `Berichtsheft_Woche_${h0.nr}.pdf` : `Berichtsheft_Woche_${h0.nr}-${hl.nr}.pdf`;
   saveFile(name, bytes, "application/pdf").then(saved => { if (saved) toast(`PDF gespeichert: ${saved}`); });
-}
-function reseedSchool() {
-  const k = todayKey();
-  state.events = state.events.filter(e => !(e.kind === "schule" && e.date >= k));
-  state.events.push(...schoolEvents(state.settings.school).filter(e => e.date >= k));
 }
 
 async function handleAction(act, el) {
@@ -3776,6 +4608,7 @@ async function handleAction(act, el) {
         if (ui.rep && ui.rep.n === n) {
           const part = { betrieb: ["betrieb", "hBetrieb", "hSchule"], vorgang: ["vorgangTitel", "vorgang"], schule: ["schule", "hBetrieb", "hSchule"] }[val];
           if (part) part.forEach(k => { ui.rep[k] = g[k]; }); else ["betrieb", "vorgangTitel", "vorgang", "schule", "hBetrieb", "hSchule"].forEach(k => { ui.rep[k] = g[k]; });
+          if (vorlage() === "tag") ui.rep.tage = tageFrom(n, ui.rep);
           ui.rep.dirty = true;
         }
         toast(`KI-Entwurf fertig${g.examples ? ` (gelernt aus ${plural(g.examples, "archiviertem Nachweis", "archivierten Nachweisen")})` : ""}. Bitte prüfen und speichern.`, { ms: 7000 });
@@ -3788,6 +4621,7 @@ async function handleAction(act, el) {
       const pool = await loadPool(), g = randomWeek(ui.rep.n, ui.rep.sick, pool);
       const part = { betrieb: ["betrieb", "hBetrieb", "hSchule"], vorgang: ["vorgangTitel", "vorgang"], schule: ["schule", "hBetrieb", "hSchule"] }[val];
       if (part) part.forEach(k => { ui.rep[k] = g[k]; }); else Object.assign(ui.rep, g);
+      if (vorlage() === "tag") ui.rep.tage = tageFrom(ui.rep.n, ui.rep);
       ui.rep.dirty = true;
       render(); toast(`Zufallsbericht erstellt${pool.fallback ? " (offline, kleiner Vorrat)" : ""}. Bitte prüfen und speichern.`, { ms: 6000 });
       break;
@@ -3801,6 +4635,88 @@ async function handleAction(act, el) {
       break;
     }
     case "rep-tab": readRepForm(); ui.repTab = val; render(); break;
+    case "exam-tab": ui.examTab = val; render(); break;
+    case "flow-ai": {
+      const t = $("#flTitle").value.trim();
+      if (!t) { toast("Bitte zuerst einen Namen eingeben, z. B. „Wareneingang prüfen“."); $("#flTitle").focus(); break; }
+      el.disabled = true; el.textContent = "KI arbeitet …";
+      try {
+        const r = await aiCall({ mode: "ablauf", titel: t, software: state.settings.profile.software || "", beruf: aiBeruf() });
+        const ta = $("#flSteps");
+        if (ta && r.schritte.length) { ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + r.schritte.join("\n"); toast("Vorschlag eingefügt. Bitte prüfen und anpassen."); }
+      } catch (e) { toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }); }
+      if (el.isConnected) { el.disabled = false; el.innerHTML = `${icon("bolt", 13)} Schritte mit KI vorschlagen`; }
+      break;
+    }
+    case "exam-del": { const snap = snapshot(); state.settings.pruefung.termine = state.settings.pruefung.termine.filter(t => t.id !== val); saveState(); render(); toastUndo("Termin gelöscht.", snap); break; }
+    case "exam-cards": {
+      const b = berufPack() || {}, have = new Set(state.cards.map(c => norm(c.front)));
+      let n = 0;
+      (b.begriffe || []).forEach(([t, e]) => { const front = `Was bedeutet „${t}“?`; if (!have.has(norm(front))) { state.cards.push({ id: uid(), subject: "Prüfung", front, back: e, box: 1, due: todayKey(), at: Date.now() }); n++; } });
+      saveState(); render(); toast(n ? `${plural(n, "Lernkarte", "Lernkarten")} angelegt (Fach „Prüfung“).` : "Alle Fachbegriffe sind schon Lernkarten."); break;
+    }
+    case "calc-reset": { const snap = snapshot(); state.settings.pruefung.bereiche = []; saveState(); render(); toastUndo("Bereiche zurückgesetzt.", snap); break; }
+    case "quiz-ans": if (ui.quiz && !ui.quiz.done) ui.quiz.ans[Number(el.dataset.q)] = Number(val); break;
+    case "quiz-check": {
+      const q = ui.quiz;
+      if (!q) break;
+      if (q.ans.some(a => a == null) && !(await confirmDialog({ title: "Noch nicht alle beantwortet", text: "Trotzdem auswerten? Offene Fragen zählen als falsch.", confirm: "Auswerten" }))) break;
+      q.done = true; q.right = q.fragen.filter((f, i) => q.ans[i] === f.richtig).length;
+      state.quiz.push({ at: Date.now(), bereich: q.bereich, total: q.fragen.length, right: q.right, wrong: q.fragen.filter((f, i) => q.ans[i] !== f.richtig).map(f => f.frage.slice(0, 200)) });
+      saveState(); render(); break;
+    }
+    case "quiz-close": ui.quiz = null; render(); break;
+    case "rep-export": savePdf(Object.keys(state.reports).map(Number).sort((a, b) => a - b).map(i => [i, state.reports[i]]), { cover: true }); break;
+    case "rahmen-toggle": {
+      const x = rahmenStand()[Number(val)];
+      if (!x) break;
+      const set = new Set(state.settings.rahmenDone);
+      if (set.has(x.titel)) set.delete(x.titel); else set.add(x.titel);
+      state.settings.rahmenDone = [...set]; saveState(); render(); break;
+    }
+    case "rep-word": { if (val) { const i = Number(val); saveWord(i, state.reports[i]); break; } saveReport(); saveWord(ui.rep.n, state.reports[ui.rep.n]); break; }
+    case "word-upload": $("#wordFile")?.click(); break;
+    case "word-remove": { const snap = snapshot(); state.settings.wordTpl = null; saveState(); render(); toastUndo("Word-Vorlage entfernt.", snap); break; }
+    case "rep-dictate": {
+      readRepForm();
+      if (ui.dictating) { ui.dictating.stop(); break; }
+      const rec = new SpeechRec(); rec.lang = "de-DE"; rec.continuous = true; rec.interimResults = false;
+      rec.onresult = e => { const t = [...e.results].slice(e.resultIndex).filter(x => x.isFinal).map(x => x[0].transcript.trim()).join(" "); if (t) { ui.repNote = ((ui.repNote || "").trim() + " " + t).trim(); const n = $("#rNote"); if (n) n.value = ui.repNote; } };
+      rec.onerror = e => toast(e.error === "not-allowed" ? "Bitte Mikrofon erlauben." : `Diktat: ${e.error}`);
+      rec.onend = () => { ui.dictating = null; render(); };
+      try { rec.start(); ui.dictating = rec; render(); } catch (e) { toast("Diktat nicht verfügbar."); }
+      break;
+    }
+    case "rep-stich": {
+      readRepForm();
+      const text = (ui.repNote || "").trim();
+      if (!text) { toast("Bitte zuerst etwas diktieren oder schreiben."); break; }
+      let res = null;
+      if (sync.session && navigator.onLine) {
+        ui.stichBusy = true; render();
+        try { res = await aiCall({ mode: "stichpunkte", text, beruf: aiBeruf() }); } catch (e) { toast(`KI nicht verfügbar, einfache Umwandlung: ${e.message}`, { ms: 6000 }); }
+        ui.stichBusy = false;
+      }
+      if (!res) res = { betrieb: text.split(/(?<=[.!?])\s+|\n+/).map(x => x.trim().replace(/[.!?]$/, "")).filter(x => x.length > 2), schule: [] };
+      const r = ui.rep, add = (a, b) => [...bullet(a), ...b.map(x => "-" + x)].join("\n");
+      if (vorlage() === "tag") {
+        const k = weekRange(r.n).days.includes(todayKey()) ? todayKey() : weekRange(r.n).days[0];
+        r.tage = r.tage || {}; r.tage[k] = { t: add((r.tage[k] || {}).t, [...res.betrieb, ...res.schule]), h: (r.tage[k] || {}).h || hNum(tagesSoll() / 60) };
+      } else { r.betrieb = add(r.betrieb, res.betrieb); if (res.schule.length) r.schule = add(r.schule, res.schule); }
+      ui.repNote = ""; r.dirty = true; render(); toast(`${plural(res.betrieb.length + res.schule.length, "Stichpunkt", "Stichpunkte")} übernommen. Bitte prüfen und speichern.`);
+      break;
+    }
+    case "setup-back": readAusb(); ui.setupStep = Math.max(0, (ui.setupStep || 0) - 1); render({ top: true }); break;
+    case "ferien-refresh": { const ok = await refreshFerien(true); if (ok) { render(); toast("Schulferien aktualisiert."); } else toast("Ferien konnten nicht geladen werden. Bitte Internet prüfen."); break; }
+    case "pack-ai": try { await makeBerufPack(); } catch (e) { toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }); } break;
+    case "pack-reset": { const snap = snapshot(); state.berufPack = null; saveState(); render(); toastUndo("Originales Berufspaket wiederhergestellt.", snap); break; }
+    case "lf-save": {
+      const b = berufPack(), p = state.settings.profile;
+      const lf = ($("#lfText").value || "").split("\n").map(l => l.split("|").map(x => x.trim())).filter(x => x[1]).map(x => [x[0], x[1], Math.min(4, Math.max(1, Number(x[2]) || 1))]);
+      if (!lf.length) { toast("Keine Lernfelder erkannt."); break; }
+      state.berufPack = sanitizePack({ ...(b || { name: p.berufName }), id: p.beruf || "eigen", lernfelder: lf });
+      saveState(); render(); toast("Lernfelder gespeichert."); break;
+    }
     case "flow-start": startFlow(val); break;
     case "flow-new": openFlowEditor(null); break;
     case "flow-edit": openFlowEditor(state.flows.find(f => f.id === val)); break;
@@ -3828,6 +4744,7 @@ async function handleAction(act, el) {
       const n = ui.rep.n, fresh = collectWeek(n);
       readRepForm();
       Object.assign(ui.rep, fresh);
+      if (vorlage() === "tag") ui.rep.tage = tageFrom(n, ui.rep);
       render(); toast("Stichpunkte und Stunden neu zusammengestellt. Speichern nicht vergessen.");
       break;
     }
@@ -3981,7 +4898,7 @@ document.addEventListener("mousedown", e => {
   if (e.target.matches("[data-scrim]")) closeDialog();
   if (e.target.matches("[data-scrim-pal]")) closePalette();
 });
-document.addEventListener("submit", e => {
+document.addEventListener("submit", async e => {
   const f = e.target;
   e.preventDefault();
   if (f.id === "quickForm") { const list = getList(ui.route.listId); if (list) addQuickTask(list); }
@@ -3991,10 +4908,20 @@ document.addEventListener("submit", e => {
   else if (f.id === "dayForm") saveDayForm(f);
   else if (f.id === "propForm") savePropForm(f);
   else if (f.id === "chatForm") chatSend($("#chatInput").value);
-  else if (f.id === "profileForm") {
-    const p = state.settings.profile;
-    Object.assign(p, { name: $("#pName").value.trim(), firma: $("#pFirma").value.trim(), abteilung: $("#pAbt").value.trim(), software: $("#pSw").value.trim(), start: keyOr($("#pStart").value) || p.start });
+  else if (f.id === "ausbForm") {
+    const landBefore = state.settings.profile.land, planChanged = readAusb();
+    state.settings.school = sanitizeSchool(state.settings.school);
     saveState(); render(); toast("Gespeichert.");
+    if (landBefore !== state.settings.profile.land) refreshFerien(true).then(ok => { if (ok) render(); });
+    if (planChanged && await confirmDialog({ title: "Berufsschultage neu eintragen?", text: "Plan, Beginn oder Bundesland haben sich geändert. Alle Berufsschultermine ab heute werden neu erzeugt. Frühere Termine bleiben.", confirm: "Neu eintragen", cancel: "Nicht jetzt" })) {
+      const snap = snapshot(); reseedSchool(); saveState(); render(); toastUndo("Berufsschultage neu eingetragen.", snap);
+    }
+  } else if (f.id === "setupForm") {
+    readAusb();
+    if ((ui.setupStep || 0) === 0 && !state.settings.profile.berufName) { toast("Bitte deinen Ausbildungsberuf eingeben."); return; }
+    saveState(true);
+    if ((ui.setupStep || 0) < SETUP_STEPS.length - 1) { ui.setupStep = (ui.setupStep || 0) + 1; render({ top: true }); }
+    else await finishSetup();
   } else if (f.id === "schoolForm") {
     const fix = x => x ? x.replace(".", ":").padStart(5, "0") : "";
     const parse = t => bullet(t).map(l => {
@@ -4002,13 +4929,32 @@ document.addEventListener("submit", e => {
       const [subject, teacher = "", room = ""] = (m ? m[3] : l).split("|").map(x => x.trim());
       return { from: m ? timeOr(fix(m[1])) : "", to: m ? timeOr(fix(m[2])) : "", subject: subject || "Unterricht", teacher, room };
     });
-    [4, 5].forEach(d => { const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
+    WD_ALL.forEach(d => { if (!$(`#s${d}f`)) return; const s = state.settings.school[d]; s.from = timeOr($(`#s${d}f`).value) || s.from; s.to = timeOr($(`#s${d}t`).value) || s.to; s.lessons = parse($(`#s${d}l`).value).slice(0, 14); });
     saveState(); render(); toast("Gespeichert. Zeiten neu übernehmen mit „Berufsschultage neu eintragen“.");
   } else if (f.id === "gradeForm") {
     const sub = $("#gSub").value.trim(), v = Number($("#gVal").value.replace(",", "."));
     if (!sub || !(v >= 1 && v <= 6)) { toast("Bitte Fach und eine Note zwischen 1 und 6 eingeben."); return; }
     ui.gradeSub = sub; addGrade(sub, v, $("#gType").value, keyOr($("#gDate").value), $("#gNote").value.trim());
     saveState(); render(); toast(`Note ${String(v).replace(".", ",")} in ${sub} eingetragen.`);
+  } else if (f.id === "examForm") {
+    const name = $("#exName").value.trim(), date = keyOr($("#exDate").value);
+    if (!name || !date) { toast("Bitte Name und Datum eingeben."); return; }
+    state.settings.pruefung.termine.push({ id: uid(), name: name.slice(0, 80), date });
+    saveState(); render(); toast(`${name} am ${fmtD(date)} eingetragen.`);
+  } else if (f.id === "calcForm") {
+    const out = [];
+    for (let i = 0; $(`#cbN${i}`); i++) {
+      const name = $(`#cbN${i}`).value.trim(), g = Number($(`#cbG${i}`).value.replace(",", ".")), pv = $(`#cbP${i}`).value.trim().replace(",", ".");
+      if (name) out.push({ name: name.slice(0, 100), gewicht: Math.min(100, Math.max(0, g || 0)), punkte: pv === "" ? "" : Math.min(100, Math.max(0, Number(pv) || 0)) });
+    }
+    state.settings.pruefung.bereiche = out.slice(0, 12); saveState(); render();
+  } else if (f.id === "quizForm") {
+    const bereich = $("#qzB").value.trim().slice(0, 120), anzahl = Number($("#qzN").value) || 8;
+    ui.quizBereich = bereich; ui.quizBusy = true; render();
+    aiCall({ mode: "quiz", bereich, anzahl, jahr: trainingYear(todayKey()), beruf: aiBeruf() })
+      .then(r => { if (!r.fragen || !r.fragen.length) throw new Error("keine Fragen"); ui.quiz = { bereich: bereich || "Gemischt", fragen: r.fragen, ans: r.fragen.map(() => null), done: false, right: 0 }; })
+      .catch(e => toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }))
+      .finally(() => { ui.quizBusy = false; render(); });
   } else if (f.id === "cardAiForm") {
     const term = $("#caTerm").value.trim(), subject = $("#caSub").value.trim() || "Allgemein";
     if (!term) { $("#caTerm").focus(); return; }
@@ -4074,7 +5020,7 @@ document.addEventListener("input", e => {
   else if (t.id === "taskQuery") { ui.q = t.value; refreshTaskList(); }
   else if (t.id === "propQ") { ui.propQ = t.value; clearTimeout(propTimer); propTimer = setTimeout(render, 120); }
   else if (t.id === "palInput" && ui.palette) { ui.palette.q = t.value; ui.palette.sel = 0; renderPalette(); }
-  else if (t.closest && t.closest("#repForm")) { const r = readRepForm(); r.dirty = true; const pv = $("#sheetPreview"); if (pv && r) pv.innerHTML = ihkSheet(r.n, r); }
+  else if (t.closest && t.closest("#repForm")) { const r = readRepForm(); r.dirty = true; const pv = $("#sheetPreview"); if (pv && r) pv.innerHTML = sheetFor(r.n, r); }
   else if (t.getAttribute("aria-invalid")) { t.removeAttribute("aria-invalid"); const err = document.getElementById(t.id + "Err"); if (err) err.hidden = true; }
 });
 document.addEventListener("change", e => {
@@ -4091,6 +5037,12 @@ document.addEventListener("change", e => {
     if (key === "dringend" || key === "datum") r.data.frist = "";
     saveState(); render();
   }
+  else if (["aBeruf", "aLand", "aModell", "aVorlage"].includes(t.id)) { readAusb(); render(); }
+  else if (t.dataset && (t.dataset.lf || t.dataset.lft)) {
+    const k = t.dataset.lf || t.dataset.lft, lf = state.settings.lernfeld, x = lf[k] || { s: "offen", t: "" };
+    if (t.dataset.lf) x.s = t.value; else x.t = t.value.slice(0, 600);
+    lf[k] = x; saveState(); if (t.dataset.lf) render();
+  }
   else if (t.id === "taskSort") { ui.sort = t.value; render(); }
   else if (t.id === "listSort") { state.settings.sort = t.value; saveState(); render(); }
   else if (t.id === "hwSub") { ui.hwSubject = t.value; const d = $("#hwDue"); if (d) d.value = nextSchoolDay(dkey(addDays(new Date(), 1)), t.value); }
@@ -4103,6 +5055,16 @@ document.addEventListener("change", e => {
   else if (t.id === "repeatToggle") { state.settings.autoRepeat = t.checked; saveState(); }
   else if (t.id === "eAll") { $("#eFrom").disabled = $("#eTo").disabled = t.checked; }
   else if (t.id === "importFile") { const f = t.files && t.files[0]; if (f) importData(f); t.value = ""; }
+  else if (t.id === "wordFile") {
+    const f = t.files && t.files[0]; t.value = "";
+    if (!f) return;
+    if (f.size > 2e6) { toast("Die Vorlage ist zu groß (max. 2 MB). Bilder in Word verkleinern."); return; }
+    f.arrayBuffer().then(buf => {
+      const u = new Uint8Array(buf);
+      try { if (!zipEntries(u).some(e => e.name === "word/document.xml")) throw new Error(); } catch (e) { toast("Das ist keine gültige Word-Datei (.docx)."); return; }
+      state.settings.wordTpl = { name: f.name.slice(0, 120), data: bytesToB64(u) }; saveState(); render(); toast("Word-Vorlage gespeichert.");
+    });
+  }
   else if (t.id === "csvFile") { const f = t.files && t.files[0]; if (f) importCsv(f); t.value = ""; }
 });
 /* ---------- Sortieren per Ziehen ---------- */
@@ -4284,7 +5246,7 @@ document.addEventListener("keydown", e => {
   const a = document.activeElement, tag = (a && a.tagName || "").toLowerCase();
   const typing = ["input", "textarea", "select"].includes(tag) || (a && a.isContentEditable);
   if (!sync.session) return;
-  if (REPORT_ONLY && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") return;
+  if (!state.settings.modules.arbeit && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (ui.palette) closePalette(); else if (!dialogOpen()) openPalette(); return; }
   if (ui.palette) { paletteKeys(e); return; }
   if (dialogOpen()) {
@@ -4505,6 +5467,7 @@ function init() {
   window.addEventListener("storage", e => { if (e.key === STORAGE_KEY && !ui.focus && !dialogOpen() && !ui.palette) { state = loadState(); render(); } });
   render({ top: true, initial: true });
   setupSync();
+  if (sync.session && state.settings.profile.setupDone) refreshFerien().then(ok => { if (ok) render(); });
   setInterval(() => {
     if (stampState() === "none") return;
     const v = `${fmtHM(liveMins(state.days[todayKey()]))} Std.`;
