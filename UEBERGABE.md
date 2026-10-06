@@ -1,6 +1,6 @@
 # Azubino – Übergabe an andere Entwickler / KI-Assistenten
 
-Stand: 29.09.2026 · App-Version `2026-09-29.1` · Live: https://azubino.netlify.app
+Stand: 06.10.2026 · App-Version `2026-10-02.1` · Live: https://noahschaefer44-wq.github.io/ArbeitsBuddy/ (nur Berichtsheft + Einstellungen, Schalter `REPORT_ONLY`)
 
 Diese Datei beschreibt den aktuellen Stand, damit jemand anderes (Mensch oder KI) nahtlos weitermachen kann.
 `CLAUDE.md` enthält die ursprüngliche Projektbeschreibung des Nutzers. Wo diese Datei davon abweicht, gilt diese Datei.
@@ -84,7 +84,13 @@ chat[], homework[], grades[], cards[], flows[], flowRuns[], flags
   - Anbieter: xKiro (OpenAI-kompatibel, `https://api.xkiro.com/v1/chat/completions`), nur kostenlose Modelle (`qwen/qwen3.5-flash:free`, Ausweichmodelle siehe Code). Gemini dient als Ersatz, falls `GEMINI_API_KEY` gesetzt ist.
   - Enthält die **Lehrplanrichtlinien Bayern (ISB) für Immobilienkaufleute, Jgst. 10–12** als Text (`LEHRPLAN`).
 
-## 7. Veröffentlichen (Netlify)
+## 7. Veröffentlichen
+
+**Aktuell: GitHub Pages** – https://noahschaefer44-wq.github.io/ArbeitsBuddy/arbeitsbuddy.html
+Quelle ist der Branch `gh-pages`. Er enthält nur die Webseiten-Dateien aus Abschnitt 2 plus `.nojekyll`. Zum Aktualisieren die Dateien dort ersetzen und pushen.
+Das Netlify-Guthaben war am 02.10.2026 aufgebraucht; Netlify zeigt seitdem eine alte Version.
+
+### Netlify (früher)
 
 - Seite: https://azubino.netlify.app (Netlify-Site „azubino“).
 - Einfachster Weg ohne Werkzeuge: Die Dateien aus Abschnitt 2 in einen Ordner legen und im Netlify-Dashboard unter „Deploys“ per Drag and Drop hochladen.
