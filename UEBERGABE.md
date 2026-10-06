@@ -1,17 +1,20 @@
 # Azubino – Übergabe an andere Entwickler / KI-Assistenten
 
-Stand: 06.10.2026 · App-Version `2026-10-02.1` · Live: https://noahschaefer44-wq.github.io/ArbeitsBuddy/ (nur Berichtsheft + Einstellungen, Schalter `REPORT_ONLY`)
+Stand: 06.10.2026 · App-Version `2026-10-06.2` · Live: https://noahschaefer44-wq.github.io/ArbeitsBuddy/ (für alle Ausbildungsberufe, Bereiche per Einstellungen wählbar)
 
 Diese Datei beschreibt den aktuellen Stand, damit jemand anderes (Mensch oder KI) nahtlos weitermachen kann.
 `CLAUDE.md` enthält die ursprüngliche Projektbeschreibung des Nutzers. Wo diese Datei davon abweicht, gilt diese Datei.
 
 ## 1. Was die App ist
 
-Persönliche Web-App (PWA) für einen Auszubildenden zum Immobilienkaufmann (1. Lehrjahr, Hausverwaltung, Bayern/Augsburg).
-Zwei Bereiche:
+Web-App (PWA) „Azubino“ für Auszubildende aller Berufe in Deutschland. Ursprünglich für einen Immobilienkaufmann (Hausverwaltung, Bayern/Augsburg) gebaut, seit 06.10.2026 allgemein:
 
-- **Schule:** Stundenplan, Hausaufgaben, Noten, Lernkarten, Berichtsheft (IHK-Ausbildungsnachweis)
-- **Arbeit:** Heute, Zeiterfassung, Kalender, Liegenschaften, Assistent, Aufgaben (geführte Abläufe)
+- **Einrichtungs-Assistent** beim ersten Start (`renderSetup()`): Beruf (40 eingebaute Berufe aus `berufe.json`, alle anderen per KI-Berufspaket), Fachrichtung, Beginn, Dauer, Bundesland (Feiertage aller 16 Länder, Schulferien über openholidaysapi.org), Betrieb, Wochenstunden, Arbeitstage, Schulmodell (Wochentage, jede 2. Woche, Blockunterricht, keine), Berichtsheft-Vorlage, Bereiche.
+- **Berichtsheft** (immer an): Vorlagen IHK wöchentlich, IHK wöchentlich mit Arbeitsvorgang (Noahs Vorlage), täglich, HWK, eigene Word-Vorlage mit Platzhaltern. Zufall/KI je Beruf, Diktat + KI-Stichpunkte, Übersicht mit Lücken, Abgleich mit dem Ausbildungsrahmenplan, Export mit Deckblatt und Übersicht.
+- **Schule** (abschaltbar): Stundenplan, Hausaufgaben, Noten, Lernkarten, Prüfung (Termine mit Countdown, Lernplan, Lernfeld-Tracker, IHK-Notenrechner, Probeprüfung per KI).
+- **Arbeit** (abschaltbar): Heute, Zeiterfassung mit Jugendarbeitsschutz/ArbZG-Hinweisen, Urlaubskonto, Kalender, Aufgaben/Abläufe (Schritte per KI vorschlagen).
+- **Immobilien-Werkzeuge** (nur Beruf Immobilien, abschaltbar): Liegenschaften, Assistent.
+- **Datenschutz-Modus:** Name, Betrieb, Abteilung und Objektnamen werden vor jedem KI-Aufruf ersetzt (`privacy()`).
 
 Sprache der Oberfläche: Deutsch, einfache Sprache, Datumsformat TT.MM.JJJJ.
 
@@ -23,12 +26,13 @@ Sprache der Oberfläche: Deutsch, einfache Sprache, Datumsformat TT.MM.JJJJ.
 | `index.html` | Leitet auf `arbeitsbuddy.html` weiter |
 | `sw.js` | Service Worker (Offline). Konstante `CACHE` bei jedem Deploy hochzählen (`azubino-vNN`) |
 | `manifest.webmanifest`, `icons/` | PWA (Name „Azubino“) |
+| `berufe.json` | 40 Berufe: Lernfelder (Nr., Titel, Jahr), Fachrichtungen, Tätigkeiten (ca. 70 je Beruf), Arbeitsvorgänge, Rahmenplan-Positionen mit Stichworten, Fachbegriffe, Prüfungsbereiche mit Gewichtung, dazu 82 weitere Berufsnamen. Erzeugt außerhalb des Repos mit einem Python-Skript (Grunddaten + KI-Erweiterung). |
 | `berichtsheft-pool.json` | Vorrat für den Zufallsbericht: 154 Vorlagen mit Platzhaltern (ca. 100.000 Stichpunkte), Arbeitsvorgänge, Schulthemen je Fach und Jahrgangsstufe (`schuleJahr`) |
-| `supabase/functions/lernkarte/index.ts` | Supabase Edge Function für die KI (Lernkarten und Berichtsheft-Entwürfe) |
+| `supabase/functions/lernkarte/index.ts` | Supabase Edge Function für die KI. Modi: `karte`, `bericht`, `beruf` (Berufspaket), `quiz`, `stichpunkte`, `ablauf`. Die App schickt den Beruf mit (`aiBeruf()`). Für Immobilien in Bayern gilt weiter der eingebaute ISB-Lehrplan. |
 | `liegenschaften.csv` | Liegenschaften des Nutzers (NICHT mit deployen, wird in der App importiert) |
 | `berichtsheft-vorlage.docx` | Offizielle IHK-Vorlage des Nutzers (NICHT mit deployen) |
 
-Nur diese Dateien werden veröffentlicht: `index.html arbeitsbuddy.html manifest.webmanifest sw.js berichtsheft-pool.json icons/`
+Nur diese Dateien werden veröffentlicht: `index.html arbeitsbuddy.html manifest.webmanifest sw.js berichtsheft-pool.json berufe.json icons/ .nojekyll`
 
 ## 3. Grundregeln im Code
 
@@ -45,23 +49,36 @@ Nur diese Dateien werden veröffentlicht: `index.html arbeitsbuddy.html manifest
 
 ```
 settings: { theme, animations, confirmDelete, autoRepeat, sort,
-            profile: { name, firma, abteilung, start (Ausbildungsbeginn), software },
-            orderSteps, school: { 4: {from,to,lessons[]}, 5: {…} } }   // 4 = Donnerstag, 5 = Freitag
+            profile: { name, firma, abteilung, start, software, beruf, berufName, fachrichtung, land, augsburg, mariae,
+                       dauer, wochenStunden, arbeitstage[], geburt, urlaub, vorlage, datenschutz, setupDone },
+            modules: { schule, arbeit, immo }, ferien: { land, at, list[[von,bis,name]] },
+            schulPlan: { schulStart, jahre: { 1: {modell: tage|block|keine, tage[{wd,from,to}], rhythmus 1|2, versatz, bloecke[], tagFrom, tagTo}, … } },
+            lernfeld: { "LF3": {s: offen|aktuell|fertig, t} }, pruefung: { termine[], bereiche[{name,gewicht,punkte}] },
+            rahmenDone[], wordTpl: {name, data(base64 .docx)} | null,
+            orderSteps, school: { 1..6: {from,to,lessons[]} } }   // Stundenplan je Wochentag
+berufPack                      // eigenes Berufspaket (KI) oder null
+quiz[]                         // Ergebnisse der Probeprüfungen
 checklists, history            // alt, in der Navigation ausgeblendet
 properties[]                   // Liegenschaften {id, ve, name, ort, firma, firmaNr, kategorie, sb, notes, archived}
 events[]                       // {id, title, date, allDay, from, to, place, propId, note, repeat, kind: termin|schule|klausur, subject, report}
 orders[]                       // alt (früherer Assistent)
 days{ "JJJJ-MM-TT": {from, to, pause, status: ""|urlaub|krank|frei, school, breaks[], entries[]} }   // Zeiterfassung + Einträge fürs Berichtsheft
 logs[]                         // automatisch gemerkte Tätigkeiten fürs Berichtsheft
-reports{ nr: {betrieb, vorgangTitel, vorgang, schule, hBetrieb, hSchule, done, archived, sick[], nr, from, to, savedAt} }
+reports{ nr: {betrieb, vorgangTitel, vorgang, schule, unterweisung, hBetrieb, hSchule, hUnterweisung, tage{datum:{t,h}}, done, archived, sick[], nr, from, to, savedAt} }
 chat[], homework[], grades[], cards[], flows[], flowRuns[], flags
 ```
 
 ## 5. Wichtige Fachlogik
 
-- **Zeiterfassung:** Gleitzeit, Soll 8 Std./Werktag ab `profile.start`. Urlaub, Krank und Berufsschultage zählen pauschal 8 Std. Gesetzliche Pause wird automatisch abgezogen (über 6 Std. 30 Min., über 9 Std. 45 Min.). Funktionen: `workMins`, `istMins`, `sollMins`, `saldo`.
-- **Berufsschule:** 1. Lehrjahr Do + Fr (Do 08:45–16:00, Fr 08:00–13:45), eingetragen als Termine mit `kind: "schule"`. Ab dem 2./3. Lehrjahr ist nur noch jede zweite Woche Schule (noch nicht umgesetzt).
-- **Feiertage:** Bayern plus Augsburger Friedensfest (`holiday()`); Schulferien 2026/27 in `FERIEN` (nur als Hinweis).
+- **Bestandsdaten (Noah):** `sanitizeExtra()` erkennt alte Daten ohne `setupDone` und setzt Immobilien, Bayern, Augsburg, Vorlage „IHK mit Arbeitsvorgang“, Schule Do/Fr (ab 2. Jahr jede 2. Woche).
+- **Allgemeiner Zufallsbericht:** `loadPool()` nimmt für Immobilien `berichtsheft-pool.json`, sonst `genericPool()` aus dem Berufspaket. Schulthemen kommen aus den Lernfeldern des Ausbildungsjahres (bevorzugt „läuft gerade“ mit eigenen Themen) bzw. `ALLG_THEMEN` für Deutsch, Englisch, Sozialkunde.
+- **Vorlagen:** `vorlage()`; `ihk-woche` nutzt `ihkSheet()`/`pdfPage()`, alle anderen `sheetSpec()` → `genSheet()` (Vorschau) und `genPdfPage()` (PDF). Täglich: `tageFrom()` verteilt die Stichpunkte auf die Tage. Word: `saveWord()` füllt `{{PLATZHALTER}}` (Liste `WORD_KEYS`) per eigenem ZIP-Code (`zipEntries`, `zipBuild`, DecompressionStream).
+- **Prüfung:** `renderExam()`; Notenschlüssel `ihkNote()`; Lernplan `lernplan()`.
+- **Arbeitsschutz:** `isMinor()` (aus `profile.geburt`), `needPause()`, `arbeitsschutz(k)` (JArbSchG §§ 8, 11–14 bzw. ArbZG §§ 3–5), `urlaubKonto()`.
+
+- **Zeiterfassung:** Gleitzeit, Soll = Wochenstunden / Arbeitstage (`tagesSoll()`) ab `profile.start`. Urlaub, Krank und Berufsschultage zählen das volle Tagessoll. Gesetzliche Pause wird automatisch abgezogen (Erwachsene über 6 Std. 30 Min., über 9 Std. 45 Min.; unter 18 über 4,5 Std. 30 Min., über 6 Std. 60 Min.). Funktionen: `workMins`, `istMins`, `sollMins`, `saldo`.
+- **Berufsschule:** Termine mit `kind: "schule"`, erzeugt aus `schulPlan` je Ausbildungsjahr (`schoolEvents()`, `reseedSchool()`).
+- **Feiertage:** alle Bundesländer (`holidays(y)`), Bayern optional mit Augsburger Friedensfest und Mariä Himmelfahrt; Schulferien über `refreshFerien()` (openholidaysapi.org), offline Bayern-Fallback.
 - **Berichtsheft:** Nachweis-Nr. und Woche zählen ab `profile.start` (Woche 1 = 01.09.–04.09.2026). IHK-Layout in `ihkSheet()`. PDF erzeugt die App selbst in `pdfPage()`/`savePdf()`, ohne Bibliothek (Helvetica, WinAnsi). Dateiname `Berichtsheft_Woche_<nr>.pdf`, Speichern-Dialog über `showSaveFilePicker`.
   - Zufallsbericht: `randomWeek()` (Pool + echte Einträge). Stunden: 8 Std. je Wochentag, Schulzeit zuerst, der Rest ist Betrieb.
   - KI-Entwurf: `aiWeek()`. Die App rechnet den Rahmen (Stunden, Krank, Feiertage, Klausuren, Fächer), die KI schreibt die Inhalte. Vorbild sind die archivierten Nachweise (`reports[n].archived`).
@@ -110,7 +127,8 @@ Keine Testkonten im echten Supabase-Projekt anlegen.
 
 ## 9. Offene Punkte und Wünsche des Nutzers
 
-- 2./3. Lehrjahr: Berufsschule nur jede zweite Woche (Kalender-Generator anpassen).
+- Ausbilder-Freigabe, Ausbilder-Konto und Gruppen wurden bewusst NICHT gebaut (Wunsch des Nutzers).
+- Rahmenplan-Stichworte und Prüfungsgewichte in `berufe.json` sind Orientierung; maßgeblich ist die jeweilige Ausbildungsordnung.
 - „Sehr viele Arbeitsprozesse“ als weitere Aufgaben (Abläufe) einbauen; der Nutzer liefert die Schritte.
 - Weitere Ideen, die der Nutzer gut fand: Handwerker-Adressbuch, Übersicht offener Aufträge mit Fristen, Textbausteine.
 - Supabase: Schutz vor gehackten Passwörtern ist noch aus (Authentication-Einstellung).

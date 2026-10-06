@@ -473,7 +473,7 @@ fieldset.quiz-q legend { padding: 0; margin-bottom: 6px; float: left; width: 100
 .quiz-a.ok { background: var(--green-soft, rgba(30,160,90,.12)); }
 .quiz-a.bad { background: var(--red-soft); }
 @media (max-width: 560px) { .lf-row { grid-template-columns: 1fr; } .calc-row { grid-template-columns: 1fr 1fr; } .calc-row > :first-child { grid-column: 1 / -1; } }
-.warn-note { display: flex; gap: 8px; align-items: flex-start; background: var(--red-soft); color: var(--ink, inherit); padding: 8px 10px; border-radius: 8px; font-size: .92em; }
+.field.warn-note, .warn-note { display: flex; flex-direction: row; gap: 8px; align-items: flex-start; background: var(--red-soft); color: var(--ink, inherit); padding: 8px 10px; border-radius: 8px; font-size: .92em; }
 .rp-row { gap: 10px; align-items: center; cursor: pointer; }
 .rp-row input { width: 18px; height: 18px; flex: none; }
 details.dictate { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
@@ -756,7 +756,7 @@ fieldset.form { border: 0; padding: 0; margin: 0; min-width: 0; }
 /* ==========================================================
    Grundlagen
    ========================================================== */
-const APP_VERSION = "2026-10-06.1";
+const APP_VERSION = "2026-10-06.2";
 const STORAGE_KEY = "arbeitsbuddy_v2";
 const LEGACY_KEY = "arbeitsbuddy_v1";
 
@@ -1713,7 +1713,7 @@ function randomWeek(n, sick, pool) {
   const sMin = school.reduce((a, k) => a + schoolMins(k), 0), totalH = w.days.length * tagesSoll() / 60;
   return {
     betrieb: betrieb.map(t => "-" + t).join("\n"), vorgangTitel, vorgang, schule,
-    hBetrieb: hNum(Math.max(0, totalH - sMin / 60)), hSchule: sMin ? hNum(sMin / 60) : "", meta
+    hBetrieb: work.length ? hNum(Math.max(0, totalH - sMin / 60)) : "", hSchule: !work.length && sMin ? hNum(totalH) : sMin ? hNum(sMin / 60) : "", meta
   };
 }
 /* Fach aus dem Stundenplan dem Lehrplan zuordnen (z. B. „FU-WiB“ → WiB) */
