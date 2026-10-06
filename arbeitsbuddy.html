@@ -473,6 +473,7 @@ fieldset.quiz-q legend { padding: 0; margin-bottom: 6px; float: left; width: 100
 .quiz-a.ok { background: var(--green-soft, rgba(30,160,90,.12)); }
 .quiz-a.bad { background: var(--red-soft); }
 @media (max-width: 560px) { .lf-row { grid-template-columns: 1fr; } .calc-row { grid-template-columns: 1fr 1fr; } .calc-row > :first-child { grid-column: 1 / -1; } }
+.warn-note { display: flex; gap: 8px; align-items: flex-start; background: var(--red-soft); color: var(--ink, inherit); padding: 8px 10px; border-radius: 8px; font-size: .92em; }
 .rp-row { gap: 10px; align-items: center; cursor: pointer; }
 .rp-row input { width: 18px; height: 18px; flex: none; }
 details.dictate { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
@@ -1415,8 +1416,33 @@ const eventsOn = k => state.events.filter(e => occursOn(e, k)).sort(byTime);
 /* ---------- Zeiterfassung: Soll 8 Std. Mo–Fr, Gleitzeit ---------- */
 const nowTime = () => { const x = new Date(); return `${pad(x.getHours())}:${pad(x.getMinutes())}`; };
 const breakMins = (d, now) => arr(d.breaks).reduce((n, b) => n + Math.max(0, mins(b.to || now || b.from) - mins(b.from)), 0) + (d.pause || 0);
-/* gesetzliche Mindestpause: über 6 Std. 30 Min., über 9 Std. 45 Min. */
-const legalPause = (raw, p) => Math.max(p, raw > 540 ? 45 : raw > 360 ? 30 : 0);
+/* gesetzliche Mindestpause: Erwachsene (ArbZG § 4) über 6 Std. 30 Min., über 9 Std. 45 Min.; unter 18 (JArbSchG § 11) über 4,5 Std. 30 Min., über 6 Std. 60 Min. */
+const isMinor = (k = todayKey()) => ageOn(k) < 18;
+const needPause = (raw, k) => isMinor(k) ? (raw > 360 ? 60 : raw > 270 ? 30 : 0) : (raw > 540 ? 45 : raw > 360 ? 30 : 0);
+const legalPause = (raw, p) => Math.max(p, needPause(raw));
+/* Hinweise nach Jugendarbeitsschutzgesetz bzw. Arbeitszeitgesetz */
+function arbeitsschutz(k) {
+  const d = state.days[k], out = [];
+  if (!d || !d.from || !d.to || d.to <= d.from) return out;
+  const raw = mins(d.to) - mins(d.from), work = workMins(d), minor = isMinor(k), br = breakMins(d);
+  if (br < needPause(raw, k)) out.push(`Zu wenig Pause eingetragen: mindestens ${needPause(raw, k)} Min. (${minor ? "JArbSchG § 11" : "ArbZG § 4"}). Azubino zieht sie automatisch ab.`);
+  if (minor) {
+    if (work > 480) out.push("Mehr als 8 Std. gearbeitet – unter 18 nicht erlaubt (JArbSchG § 8).");
+    if (mins(d.from) < 360 || mins(d.to) > 1200) out.push("Arbeit vor 6 Uhr oder nach 20 Uhr – unter 18 nicht erlaubt (JArbSchG § 14).");
+    if (raw > 600) out.push("Schichtzeit über 10 Std. (JArbSchG § 12).");
+  } else if (work > 600) out.push("Mehr als 10 Std. gearbeitet – nicht erlaubt (ArbZG § 3).");
+  const prev = state.days[dkey(addDays(pkey(k), -1))];
+  if (prev && prev.to && d.from) { const rest = 1440 - mins(prev.to) + mins(d.from); if (rest < (minor ? 720 : 660)) out.push(`Nur ${fmtHM(rest)} Std. Ruhezeit seit gestern – mindestens ${minor ? "12 Std. (JArbSchG § 13)" : "11 Std. (ArbZG § 5)"}.`); }
+  if (minor) { const m = monday(pkey(k)), wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + workMins(state.days[dkey(addDays(m, i))]), 0); if (wk > 2400) out.push(`Diese Woche ${fmtHM(wk)} Std. – unter 18 höchstens 40 Std. (JArbSchG § 8).`); }
+  return out;
+}
+/* Urlaubskonto im Kalenderjahr */
+function urlaubKonto(year = String(new Date().getFullYear())) {
+  const p = state.settings.profile, taken = Object.entries(state.days).filter(([k, x]) => k.startsWith(year) && x.status === "urlaub" && sollMins(k)).length;
+  const age = ageOn(`${year}-01-01`), werk = age < 16 ? 30 : age < 17 ? 27 : age < 18 ? 25 : 24;
+  const min = Math.ceil(werk * p.arbeitstage.length / 6);
+  return { taken, total: p.urlaub, rest: p.urlaub - taken, min, below: p.urlaub < min, law: age < 18 ? "JArbSchG § 19" : "BUrlG § 3" };
+}
 const workMins = d => { if (!d || !d.from || !d.to || d.to <= d.from) return 0; const raw = mins(d.to) - mins(d.from); return Math.max(0, raw - legalPause(raw, breakMins(d))); };
 const liveMins = d => { if (!d || !d.from || d.to) return workMins(d); const now = nowTime(); return Math.max(0, mins(now) - mins(d.from) - breakMins(d, now)); };
 const schoolDay = k => !holiday(k) && state.events.some(e => e.kind === "schule" && occursOn(e, k));
@@ -2338,7 +2364,7 @@ function renderTime(route) {
   }
   const breaksText = d.breaks.map(b => `${b.from}-${b.to}`).join(", ");
   return `
-    <div class="page-head"><div><p class="eyebrow">Arbeit · Zeiterfassung</p><h1>Rein. Pause. <span class="hl">Raus.</span></h1><p class="lede">Gleitzeit mit 8 Std. Soll. Urlaub, Krank und Schule zählen 8 Std., die Mindestpause rechnet Azubino selbst.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">Arbeit · Zeiterfassung</p><h1>Rein. Pause. <span class="hl">Raus.</span></h1><p class="lede">Gleitzeit mit ${fmtHM(tagesSoll())} Std. Soll. Urlaub, Krank und Schule zählen voll, die Mindestpause rechnet Azubino selbst${isMinor() ? " – nach Jugendarbeitsschutzgesetz" : ""}.</p></div></div>
     <div class="cols">
       <div class="stack" style="gap:16px">
         ${timeCard()}
@@ -2355,6 +2381,7 @@ function renderTime(route) {
           <div class="field"><label for="tmTo">Gehen</label><input class="input" id="tmTo" type="time" value="${esc(d.to)}"></div>
           <div class="field"><label for="tmBreaks">Pausen</label><input class="input" id="tmBreaks" value="${esc(breaksText)}" placeholder="12:00-12:30, 15:00-15:10"></div>
           <div class="field"><label for="tmPause">oder Pause in Min.</label><input class="input" id="tmPause" type="number" min="0" max="600" step="5" value="${d.pause || ""}"></div>
+          ${arbeitsschutz(sel).map(w => `<div class="field full notice warn-note">${icon("shield", 16)} <span>${esc(w)}</span></div>`).join("")}
           <div class="btn-row" style="grid-column:1/-1"><button type="submit" class="btn primary">Speichern</button>${state.days[sel] && (d.from || d.status) ? `<button type="button" class="btn danger" data-act="t-clear" data-value="${sel}">Zeiten löschen</button>` : ""}</div>
         </form>
         <form class="panel panel-pad form three" id="vacForm" autocomplete="off">
@@ -2370,7 +2397,9 @@ function renderTime(route) {
         <div class="block"><div class="cap">Woche Mo–Fr</div>${weekBars()}</div>
         <div class="block"><div class="cap">Diese Woche</div><div>Ist ${fmtHM(wk.ist)} / Soll ${fmtHM(wk.soll)} <strong class="${wk.ist - wk.soll < 0 ? "minus" : "plus"}">${fmtHM(wk.ist - wk.soll, true)}</strong></div></div>
         <div class="block"><div class="cap">Dieser Monat</div><div>Ist ${fmtHM(mo.ist)} / Soll ${fmtHM(mo.soll)} <strong class="${mo.ist - mo.soll < 0 ? "minus" : "plus"}">${fmtHM(mo.ist - mo.soll, true)}</strong></div></div>
-        <div class="block"><div class="cap">${year}</div><div>${plural(cnt("urlaub"), "Urlaubstag", "Urlaubstage")} · ${plural(cnt("krank"), "Krankheitstag", "Krankheitstage")}</div></div>
+        ${(() => { const u = urlaubKonto(year); return `<div class="block"><div class="cap">Urlaub ${year}</div><div><strong>${u.rest}</strong> von ${u.total} Tagen übrig · ${u.taken} genommen</div><div class="bar" style="margin-top:6px"><span style="width:${Math.min(100, Math.round(u.taken / Math.max(1, u.total) * 100))}%"></span></div>${u.below ? `<p class="hint-text" style="margin-top:6px">Gesetzlich mindestens ${u.min} Tage (${u.law}). Bitte Anspruch im Ausbildungsvertrag prüfen.</p>` : ""}</div>`; })()}
+        <div class="block"><div class="cap">${year}</div><div>${plural(cnt("krank"), "Krankheitstag", "Krankheitstage")}</div></div>
+        ${isMinor() ? `<div class="block"><div class="cap">Jugendarbeitsschutz</div><div class="hint-text">Unter 18: höchstens 8 Std. am Tag und 40 Std. pro Woche, nur 6–20 Uhr, 30 Min. Pause ab 4,5 Std., 60 Min. ab 6 Std., 12 Std. Ruhe zwischen zwei Arbeitstagen. Berufsschule mit mehr als 5 Stunden à 45 Min. zählt einmal pro Woche als ganzer Arbeitstag.</div></div>` : ""}
       </aside>
     </div>`;
 }
@@ -3176,7 +3205,7 @@ function openFlowEditor(f) {
   const lines = f ? f.steps.map(x => x.copy ? `${x.text} | ${x.copy.replace(/\n/g, "\\n")}` : x.text).join("\n") : "";
   openDialog({ title: f ? "Aufgabe bearbeiten" : "Eigene Aufgabe", body: `
     <form class="stack" id="flowForm" data-id="${f ? f.id : ""}" style="gap:12px">
-      <div class="field"><label for="flTitle">Name</label><input class="input" id="flTitle" required value="${esc(f ? f.title : "")}" placeholder="z. B. Wohnungsübergabe vorbereiten"></div>
+      <div class="field"><div class="lbl-row"><label for="flTitle">Name</label><button type="button" class="btn small" data-act="flow-ai">${icon("bolt", 13)} Schritte mit KI vorschlagen</button></div><input class="input" id="flTitle" required value="${esc(f ? f.title : "")}" placeholder="z. B. Wareneingang prüfen"></div>
       <div class="field"><label for="flDesc">Kurzbeschreibung</label><input class="input" id="flDesc" value="${esc(f ? f.desc : "")}"></div>
       <div class="field"><label for="flSteps">Schritte <span class="hint-text">– einer pro Zeile · Text zum Kopieren nach „|“, Absatz mit \\n</span></label><textarea class="textarea" id="flSteps" rows="10" placeholder="Unterlagen ausdrucken&#10;Termin im Kalender eintragen&#10;E-Mail senden | Sehr geehrte Damen und Herren,\\n\\n...">${esc(lines)}</textarea></div>
       <div class="btn-row"><button type="submit" class="btn primary">Speichern</button></div>
@@ -4607,6 +4636,18 @@ async function handleAction(act, el) {
     }
     case "rep-tab": readRepForm(); ui.repTab = val; render(); break;
     case "exam-tab": ui.examTab = val; render(); break;
+    case "flow-ai": {
+      const t = $("#flTitle").value.trim();
+      if (!t) { toast("Bitte zuerst einen Namen eingeben, z. B. „Wareneingang prüfen“."); $("#flTitle").focus(); break; }
+      el.disabled = true; el.textContent = "KI arbeitet …";
+      try {
+        const r = await aiCall({ mode: "ablauf", titel: t, software: state.settings.profile.software || "", beruf: aiBeruf() });
+        const ta = $("#flSteps");
+        if (ta && r.schritte.length) { ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + r.schritte.join("\n"); toast("Vorschlag eingefügt. Bitte prüfen und anpassen."); }
+      } catch (e) { toast(`KI nicht verfügbar: ${e.message}`, { ms: 7000 }); }
+      if (el.isConnected) { el.disabled = false; el.innerHTML = `${icon("bolt", 13)} Schritte mit KI vorschlagen`; }
+      break;
+    }
     case "exam-del": { const snap = snapshot(); state.settings.pruefung.termine = state.settings.pruefung.termine.filter(t => t.id !== val); saveState(); render(); toastUndo("Termin gelöscht.", snap); break; }
     case "exam-cards": {
       const b = berufPack() || {}, have = new Set(state.cards.map(c => norm(c.front)));
